@@ -1,0 +1,596 @@
+"""
+Privacy Nutrition Label Generator – FastAPI Backend
+"""
+from __future__ import annotations
+import dataclasses
+from contextlib import asynccontextmanager
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
+
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / ".env", override=True)
+
+from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, field_validator
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database import init_db, get_db
+from database.crud import (
+    get_or_create_policy_version,
+    save_analysis,
+    get_latest_analysis,
+    get_analysis_history,
+    get_policy_changes,
+    get_all_analyzed_domains,
+    get_policy_text,
+)
+from crawler import crawl_website, extract_domain
+from analyzer.policy_analyzer import analyze_policy
+from tracker.detector import detect_trackers_from_html
+from scoring.privacy_scorer import calculate_score
+from ai.policy_ai import analyze_policy_ai, stream_chat_response
+from ai.third_party_researcher import research_ecosystem
+from ai.claude_client import is_available as ai_available
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# App lifecycle
+# ─────────────────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    yield
+
+app = FastAPI(
+    title="Privacy Nutrition Label API",
+    description="Analyzes websites and generates comprehensive privacy labels.",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Request / Response models
+# ─────────────────────────────────────────────────────────────────────────────
+
+class AnalyzeRequest(BaseModel):
+    url: str
+    force_refresh: bool = False
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        if not v.startswith(("http://", "https://")):
+            v = "https://" + v.lstrip("/")
+        try:
+            parsed = urlparse(v)
+            if not parsed.netloc:
+                raise ValueError("Invalid URL")
+        except Exception:
+            raise ValueError("Invalid URL provided")
+        return v
+
+
+class AIAnalyzeRequest(BaseModel):
+    domain: str
+
+
+class EcosystemRequest(BaseModel):
+    domain: str
+    max_parties: int = 12
+
+
+class ChatMessage(BaseModel):
+    role: str   # "user" | "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    domain: str
+    messages: List[ChatMessage]
+
+
+def _dc(obj) -> Any:
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return {k: _dc(v) for k, v in dataclasses.asdict(obj).items()}
+    if isinstance(obj, list):
+        return [_dc(i) for i in obj]
+    if isinstance(obj, dict):
+        return {k: _dc(v) for k, v in obj.items()}
+    return obj
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/recent")
+async def get_recent_analyses(db: AsyncSession = Depends(get_db)):
+    """Return recently analyzed domains."""
+    domains = await get_all_analyzed_domains(db, limit=20)
+    return {"domains": domains}
+
+
+@app.post("/analyze")
+async def analyze_website(
+    req: AnalyzeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Main endpoint: crawl a website, analyze its privacy policy,
+    detect trackers, compute score, store result.
+    """
+    domain = extract_domain(req.url)
+
+    # ── Check cache unless force refresh ──────────────────────────────────────
+    if not req.force_refresh:
+        cached = await get_latest_analysis(db, domain)
+        if cached and cached.result_json:
+            return {
+                "cached": True,
+                "domain": domain,
+                **cached.result_json,
+            }
+
+    # ── Crawl ─────────────────────────────────────────────────────────────────
+    try:
+        crawl = await crawl_website(req.url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Crawl failed: {str(e)}")
+
+    # ── Tracker detection from homepage HTML ──────────────────────────────────
+    tracker_result = None
+    if crawl.homepage_html:
+        try:
+            tracker_result = detect_trackers_from_html(
+                crawl.homepage_html,
+                domain,
+                crawl.homepage_cookies,
+            )
+        except Exception:
+            pass
+
+    # ── Policy analysis ────────────────────────────────────────────────────────
+    policy_text = crawl.policy_text or ""
+
+    if not crawl.policy_found:
+        # ── PATH A: No privacy policy found at all ─────────────────────────
+        score_breakdown = calculate_score(
+            data_types=[],
+            third_parties=_empty_third_parties(),
+            retention=_empty_retention(),
+            rights=_empty_rights(),
+            sentiment=_empty_sentiment(),
+            dark_patterns=_empty_dark_patterns(),
+            tracker_result=tracker_result,
+            policy_found=False,
+        )
+        result = _build_result(
+            url=req.url,
+            domain=domain,
+            crawl=crawl,
+            analysis={},
+            tracker_result=tracker_result,
+            score=score_breakdown,
+        )
+
+    elif len(policy_text) < 100:
+        # ── PATH B: Policy URL found but text is unreadable ────────────────
+        # Typical for JS-rendered SPAs (Next.js, React, etc.)
+        # The crawler found the privacy page URL, but the actual content is
+        # loaded via JavaScript and isn't in the static HTML.
+        # → We still give credit for HAVING a policy
+        # → Tracker/cookie analysis is fully available (homepage HTML)
+        # → Policy dimensions get neutral "unknown" scores (not 0)
+        score_breakdown = _score_js_rendered_policy(tracker_result)
+        result = _build_result(
+            url=req.url,
+            domain=domain,
+            crawl=crawl,
+            analysis={
+                "js_rendered_note": (
+                    "Privacy policy page was found but its content is loaded via "
+                    "JavaScript and could not be extracted for analysis. "
+                    "Tracker and cookie analysis is still fully available."
+                ),
+            },
+            tracker_result=tracker_result,
+            score=score_breakdown,
+        )
+
+    else:
+        # ── PATH C: Full analysis with extracted text ──────────────────────
+        try:
+            analysis_tuple = analyze_policy(
+                policy_text,
+                policy_url=crawl.policy_url,
+                domain=domain,
+            )
+            analysis_dict, data_types, retention, sentiment, dark_patterns, rights, third_parties = analysis_tuple
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+        score_breakdown = calculate_score(
+            data_types=data_types,
+            third_parties=third_parties,
+            retention=retention,
+            rights=rights,
+            sentiment=sentiment,
+            dark_patterns=dark_patterns,
+            tracker_result=tracker_result,
+            policy_found=True,
+        )
+
+        result = _build_result(
+            url=req.url,
+            domain=domain,
+            crawl=crawl,
+            analysis=analysis_dict,
+            tracker_result=tracker_result,
+            score=score_breakdown,
+        )
+
+    # ── Persist ────────────────────────────────────────────────────────────────
+    try:
+        policy_version_id = None
+        if crawl.policy_found and policy_text:
+            version, _ = await get_or_create_policy_version(
+                db, domain, crawl.policy_url or "", policy_text
+            )
+            policy_version_id = version.id
+
+        scores_dict = {
+            "overall": score_breakdown.overall,
+            "grade": score_breakdown.grade,
+            "risk_level": score_breakdown.risk_level,
+            "data": score_breakdown.data_collection_score,
+            "sharing": score_breakdown.sharing_score,
+            "transparency": score_breakdown.transparency_score,
+            "rights": score_breakdown.rights_score,
+            "retention": score_breakdown.retention_score,
+            "dark_patterns": score_breakdown.dark_patterns_score,
+            "cookie": score_breakdown.technical_score,
+            "tracker": score_breakdown.technical_score,
+        }
+
+        await save_analysis(db, domain, req.url, policy_version_id, scores_dict, result)
+    except Exception:
+        pass  # Don't fail the request if persistence fails
+
+    return {"cached": False, "domain": domain, **result}
+
+
+@app.get("/history/{domain}")
+async def get_domain_history(domain: str, db: AsyncSession = Depends(get_db)):
+    """Return analysis history for a domain."""
+    analyses = await get_analysis_history(db, domain, limit=10)
+    changes = await get_policy_changes(db, domain, limit=10)
+
+    return {
+        "domain": domain,
+        "analyses": [
+            {
+                "id": a.id,
+                "analyzed_at": a.analyzed_at.isoformat(),
+                "overall_score": a.overall_score,
+                "grade": a.grade,
+                "risk_level": a.risk_level,
+            }
+            for a in analyses
+        ],
+        "policy_changes": [
+            {
+                "id": c.id,
+                "detected_at": c.detected_at.isoformat(),
+                "summary": c.change_summary,
+                "added_lines": c.added_lines,
+                "removed_lines": c.removed_lines,
+                "similarity_ratio": c.similarity_ratio,
+                "diff_snippets": c.diff_json,
+            }
+            for c in changes
+        ],
+    }
+
+
+@app.get("/compare/{domain}")
+async def compare_policies(domain: str, db: AsyncSession = Depends(get_db)):
+    """Return the latest two analyses for comparison."""
+    analyses = await get_analysis_history(db, domain, limit=2)
+    if len(analyses) < 2:
+        return {"message": "Not enough history for comparison", "domain": domain}
+
+    newer, older = analyses[0], analyses[1]
+    return {
+        "domain": domain,
+        "newer": {
+            "analyzed_at": newer.analyzed_at.isoformat(),
+            "score": newer.overall_score,
+            "grade": newer.grade,
+            "result": newer.result_json,
+        },
+        "older": {
+            "analyzed_at": older.analyzed_at.isoformat(),
+            "score": older.overall_score,
+            "grade": older.grade,
+            "result": older.result_json,
+        },
+        "score_delta": newer.overall_score - older.overall_score,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AI endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/ai/status")
+async def ai_status():
+    """Check if AI features are available."""
+    return {"available": ai_available(), "model": "claude-haiku-4-5"}
+
+
+@app.post("/ai/analyze")
+async def ai_analyze_policy(req: AIAnalyzeRequest, db: AsyncSession = Depends(get_db)):
+    """Run AI-powered deep analysis on a previously analyzed domain."""
+    cached = await get_latest_analysis(db, req.domain)
+    if not cached or not cached.result_json:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No analysis found for '{req.domain}'. Analyze the website first via /analyze."
+        )
+
+    result_json = cached.result_json
+
+    # Try to get policy text from policy version
+    policy_text = ""
+    if cached.policy_version_id:
+        try:
+            policy_text = await get_policy_text(db, cached.policy_version_id) or ""
+        except Exception:
+            pass
+
+    ai_result = await analyze_policy_ai(req.domain, policy_text, result_json)
+    return dataclasses.asdict(ai_result)
+
+
+@app.post("/ai/research-ecosystem")
+async def ai_research_ecosystem(req: EcosystemRequest, db: AsyncSession = Depends(get_db)):
+    """Research all third parties and trackers for a domain using AI."""
+    cached = await get_latest_analysis(db, req.domain)
+    if not cached or not cached.result_json:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No analysis found for '{req.domain}'. Analyze the website first."
+        )
+
+    result_json = cached.result_json
+    third_parties = result_json.get("third_parties", {}).get("parties", [])
+    trackers = result_json.get("trackers", {}).get("trackers", [])
+
+    try:
+        ecosystem = await research_ecosystem(
+            req.domain,
+            third_parties,
+            trackers,
+            max_parties=req.max_parties,
+        )
+        return dataclasses.asdict(ecosystem)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ecosystem research failed: {str(e)}")
+
+
+@app.post("/ai/chat")
+async def ai_chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
+    """Stream a privacy assistant chat response using SSE."""
+    cached = await get_latest_analysis(db, req.domain)
+    result_json = cached.result_json if (cached and cached.result_json) else {}
+
+    conversation = [{"role": m.role, "content": m.content} for m in req.messages]
+
+    async def generate():
+        try:
+            async for chunk in stream_chat_response(req.domain, result_json, conversation):
+                # Escape newlines in SSE data
+                safe_chunk = chunk.replace("\n", "\\n")
+                yield f"data: {safe_chunk}\n\n"
+        except Exception as e:
+            yield f"data: [ERROR: {str(e)[:100]}]\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Result builder
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_result(url, domain, crawl, analysis, tracker_result, score) -> dict:
+    tr = _dc(tracker_result) if tracker_result else {}
+    return {
+        "url": url,
+        "domain": domain,
+        "policy_found": crawl.policy_found,
+        "policy_url": crawl.policy_url,
+        "policy_word_count": crawl.word_count,
+        "policy_discovery_method": crawl.discovery_method,
+        "overall_score": score.overall,
+        "grade": score.grade,
+        "risk_level": score.risk_level,
+        "summary": score.summary,
+        "score_breakdown": {
+            "data_collection": score.data_collection_score,
+            "sharing": score.sharing_score,
+            "transparency": score.transparency_score,
+            "rights": score.rights_score,
+            "retention": score.retention_score,
+            "dark_patterns": score.dark_patterns_score,
+            "technical": score.technical_score,
+            "weights": score.weights,
+        },
+        "penalties": score.penalties,
+        "bonuses": score.bonuses,
+        "data_types": analysis.get("data_types", []),
+        "retention": analysis.get("retention", {}),
+        "sentiment": analysis.get("sentiment", {}),
+        "dark_patterns": analysis.get("dark_patterns", {}),
+        "rights": analysis.get("rights", {}),
+        "third_parties": analysis.get("third_parties", {}),
+        "trackers": tr,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Empty fallbacks
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _empty_third_parties():
+    from analyzer.third_party_analyzer import ThirdPartyAnalysis
+    return ThirdPartyAnalysis(count=0, named_count=0, unnamed_count=0, parties=[],
+                               sharing_purposes={}, data_sold=False, cross_border_transfers=False,
+                               transfer_safeguards=[], advertising_partners=0, analytics_partners=0,
+                               risk_level="unknown", sharing_score=0)
+
+def _empty_retention():
+    from analyzer.retention_parser import RetentionAnalysis
+    return RetentionAnalysis(items=[], overall_rating="unknown", has_vague_retention=False,
+                              has_indefinite_retention=False, has_event_based_deletion=False,
+                              has_specific_periods=False, has_deletion_policy=False,
+                              deletion_on_request=False, shortest_days=None, longest_days=None,
+                              storage_limitation_mentioned=False)
+
+def _empty_rights():
+    from analyzer.rights_checker import RightsAnalysis
+    return RightsAnalysis(gdpr={}, gdpr_score=0, gdpr_grade="F", ccpa={}, ccpa_score=0,
+                           ccpa_grade="F", frameworks_mentioned=[], cookie_compliance={},
+                           dnt_mentioned=False, dnt_honored=False, global_privacy_control=False,
+                           overall_rights_score=0)
+
+def _empty_sentiment():
+    from analyzer.sentiment_analyzer import SentimentResult
+    return SentimentResult(vagueness_score=100, specificity_score=0, passive_voice_ratio=1.0,
+                            active_voice_count=0, passive_voice_count=0, named_third_parties=[],
+                            named_third_party_count=0, vague_term_examples=[], hedging_examples=[],
+                            specific_purpose_count=0, accountability={}, accountability_score=0,
+                            overall_transparency="very_low", transparency_score=0,
+                            avg_sentence_length=0, readability_rating="unknown", flesch_kincaid_words=0)
+
+def _empty_dark_patterns():
+    from analyzer.dark_pattern_detector import DarkPatternAnalysis
+    return DarkPatternAnalysis(detected=[], count=0, high_severity_count=0,
+                                medium_severity_count=0, low_severity_count=0,
+                                overall_risk="none", consent_mechanism_quality="unclear")
+
+
+def _score_js_rendered_policy(tracker_result) -> "ScoreBreakdown":
+    """
+    Score a site whose privacy policy was found but text couldn't be extracted
+    (JavaScript-rendered SPA).
+
+    - Policy EXISTS → don't penalise as "no policy" (which gives 5/100)
+    - Text UNAVAILABLE → policy dimensions get neutral "unknown" scores
+    - Trackers still analysed from homepage HTML → technical score is real
+    """
+    from scoring.privacy_scorer import ScoreBreakdown
+
+    # ── Technical score from real tracker data ────────────────────────────
+    tech_score = 50  # neutral default
+    penalties = []
+    bonuses = [{"dimension": "general", "reason": "Privacy policy page exists and is accessible", "bonus": 10}]
+
+    if tracker_result:
+        tr = tracker_result if isinstance(tracker_result, dict) else (
+            {k: getattr(tracker_result, k, None) for k in vars(tracker_result)} if hasattr(tracker_result, '__dict__') else {}
+        )
+        total_trackers = tr.get("total_trackers", 0) if isinstance(tr, dict) else getattr(tracker_result, "total_trackers", 0)
+        if total_trackers == 0:
+            tech_score = 90
+            bonuses.append({"dimension": "technical", "reason": "No trackers detected", "bonus": 10})
+        elif total_trackers <= 3:
+            tech_score = 70
+        elif total_trackers <= 8:
+            tech_score = 45
+            penalties.append({"dimension": "technical", "reason": f"{total_trackers} trackers detected", "penalty": 15})
+        else:
+            tech_score = 20
+            penalties.append({"dimension": "technical", "reason": f"{total_trackers} trackers detected", "penalty": 30})
+
+    penalties.append({
+        "dimension": "transparency",
+        "reason": "Policy page is JavaScript-rendered — full text analysis unavailable",
+        "penalty": 20,
+    })
+
+    # Neutral scores for text-dependent dimensions
+    data_score = 50        # can't tell what data is collected
+    sharing_score = 50     # can't tell what's shared
+    transparency_score = 25  # low: we literally can't read the policy
+    rights_score = 50      # can't verify rights coverage
+    retention_score = 50   # can't verify retention periods
+    dark_patterns_score = 70  # no dark patterns detectable (benefit of the doubt)
+
+    weights = {
+        "data_collection": 0.20,
+        "sharing": 0.20,
+        "transparency": 0.15,
+        "rights": 0.15,
+        "retention": 0.12,
+        "dark_patterns": 0.10,
+        "technical": 0.08,
+    }
+    overall = int(
+        data_score * weights["data_collection"]
+        + sharing_score * weights["sharing"]
+        + transparency_score * weights["transparency"]
+        + rights_score * weights["rights"]
+        + retention_score * weights["retention"]
+        + dark_patterns_score * weights["dark_patterns"]
+        + tech_score * weights["technical"]
+    )
+
+    from scoring.privacy_scorer import _grade, _risk_level
+
+    return ScoreBreakdown(
+        overall=overall,
+        grade=_grade(overall),
+        risk_level=_risk_level(overall),
+        summary=(
+            "Privacy policy page found but rendered via JavaScript — "
+            "full text analysis was not possible. Tracker and cookie "
+            "analysis is available. Score reflects partial data."
+        ),
+        data_collection_score=data_score,
+        sharing_score=sharing_score,
+        transparency_score=transparency_score,
+        rights_score=rights_score,
+        retention_score=retention_score,
+        dark_patterns_score=dark_patterns_score,
+        technical_score=tech_score,
+        weights=weights,
+        penalties=penalties,
+        bonuses=bonuses,
+    )

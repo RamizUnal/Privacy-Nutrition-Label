@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Label</title>
+  <style>
+    :root {
+      --bg: #080810;
+      --surface: #0f0f1a;
+      --panel: #141422;
+      --border: #1e1e35;
+      --green: #00ff88;
+      --red: #ff3b3b;
+      --yellow: #ffd60a;
+      --orange: #ff6b00;
+      --blue: #4488ff;
+      --text: rgba(255,255,255,0.85);
+      --text-dim: rgba(255,255,255,0.4);
+      --text-muted: rgba(255,255,255,0.2);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 380px;
+      min-height: 480px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+    }
+
+    /* Header */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo {
+      width: 20px;
+      height: 20px;
+      border: 1px solid rgba(0,255,136,0.5);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--green);
+      font-size: 11px;
+    }
+    .title { font-weight: 600; font-size: 12px; letter-spacing: 0.08em; color: rgba(255,255,255,0.7); }
+
+    /* Loading */
+    #loading {
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 2px solid rgba(0,255,136,0.15);
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* No policy */
+    #no-policy {
+      padding: 24px 16px;
+      text-align: center;
+      color: var(--text-dim);
+    }
+
+    /* Main content */
+    #content { display: none; }
+
+    /* Score section */
+    .score-section {
+      padding: 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .grade-circle {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 3px solid;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .grade-letter { font-size: 24px; font-weight: 800; line-height: 1; }
+    .grade-score { font-size: 10px; opacity: 0.6; font-family: monospace; margin-top: 2px; }
+    .score-info { flex: 1; min-width: 0; }
+    .domain-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; truncate: ellipsis; overflow: hidden; white-space: nowrap; }
+    .risk-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-family: monospace;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .summary-text { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+
+    /* Tracker count banner */
+    .tracker-banner {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .tracker-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+    }
+    .tracker-count { font-size: 20px; font-weight: 800; font-family: monospace; }
+    .tracker-label { font-size: 10px; color: var(--text-muted); font-family: monospace; margin-top: 1px; }
+    .tracker-divider { width: 1px; height: 32px; background: var(--border); }
+
+    /* Score bars */
+    .bars-section {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .bar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .bar-row:last-child { margin-bottom: 0; }
+    .bar-label { font-size: 10px; color: var(--text-dim); font-family: monospace; width: 80px; flex-shrink: 0; }
+    .bar-track {
+      flex: 1;
+      height: 4px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 1s ease;
+    }
+    .bar-val { font-size: 10px; font-family: monospace; width: 28px; text-align: right; flex-shrink: 0; }
+
+    /* Alert items */
+    .alerts-section { padding: 12px 16px; }
+    .alert {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid;
+      margin-bottom: 6px;
+      font-size: 11px;
+    }
+    .alert:last-child { margin-bottom: 0; }
+    .alert-icon { flex-shrink: 0; font-size: 12px; }
+    .alert-text { color: var(--text-dim); line-height: 1.4; }
+
+    /* Trackers list */
+    .trackers-section {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .section-title {
+      font-size: 10px;
+      font-family: monospace;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+    .tracker-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      font-size: 11px;
+    }
+    .tracker-item:last-child { border-bottom: none; }
+    .tracker-name { color: var(--text-dim); truncate: ellipsis; overflow: hidden; white-space: nowrap; max-width: 200px; }
+    .risk-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Footer */
+    .footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      flex: 1;
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: monospace;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid;
+      text-align: center;
+      text-decoration: none;
+      display: block;
+    }
+    .btn-primary {
+      background: var(--green);
+      color: #000;
+      border-color: var(--green);
+    }
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-dim);
+      border-color: var(--border);
+    }
+    .btn:hover { opacity: 0.85; }
+
+    /* Live counter */
+    .live-counter {
+      background: var(--panel);
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .live-label { font-size: 10px; font-family: monospace; color: var(--text-muted); }
+    .live-count { font-size: 22px; font-family: monospace; font-weight: 800; }
+    .live-pulse { display: flex; align-items: center; gap: 6px; }
+    .pulse-dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .live-text { font-size: 10px; font-family: monospace; color: var(--green); }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">🛡</div>
+      <span class="title">PRIVACY LABEL</span>
+    </div>
+    <div style="font-size:10px;font-family:monospace;color:var(--text-muted);">v1.0</div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <p style="font-size:12px;color:var(--text-dim);font-family:monospace;">Analyzing…</p>
+  </div>
+
+  <!-- No policy found -->
+  <div id="no-policy" style="display:none">
+    <div style="font-size:32px;margin-bottom:12px;">⚠️</div>
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px;">Analysis Unavailable</p>
+    <p style="font-size:11px;line-height:1.5;max-width:260px;margin:0 auto 16px;">
+      Could not connect to analysis server. Make sure the backend is running on port 8000.
+    </p>
+  </div>
+
+  <!-- Main content -->
+  <div id="content">
+    <!-- Score -->
+    <div class="score-section">
+      <div class="grade-circle" id="grade-circle">
+        <span class="grade-letter" id="grade-letter">–</span>
+        <span class="grade-score" id="grade-score">–/100</span>
+      </div>
+      <div class="score-info">
+        <div class="domain-name" id="domain-name"></div>
+        <div class="risk-badge" id="risk-badge"></div>
+        <div class="summary-text" id="summary-text"></div>
+      </div>
+    </div>
+
+    <!-- Live tracker counter -->
+    <div class="live-counter">
+      <div>
+        <div class="section-title" style="margin-bottom:2px;">Trackers on This Page</div>
+        <div class="live-count" id="live-tracker-count" style="color:var(--orange);">…</div>
+      </div>
+      <div class="live-pulse">
+        <div class="pulse-dot"></div>
+        <span class="live-text">LIVE</span>
+      </div>
+    </div>
+
+    <!-- Quick stats -->
+    <div class="tracker-banner">
+      <div class="tracker-stat">
+        <div class="tracker-count" id="stat-trackers">0</div>
+        <div class="tracker-label">Trackers</div>
+      </div>
+      <div class="tracker-divider"></div>
+      <div class="tracker-stat">
+        <div class="tracker-count" id="stat-cookies">0</div>
+        <div class="tracker-label">Cookies</div>
+      </div>
+      <div class="tracker-divider"></div>
+      <div class="tracker-stat">
+        <div class="tracker-count" id="stat-parties">0</div>
+        <div class="tracker-label">3rd Parties</div>
+      </div>
+      <div class="tracker-divider"></div>
+      <div class="tracker-stat">
+        <div class="tracker-count" id="stat-dark">0</div>
+        <div class="tracker-label">Dark Patterns</div>
+      </div>
+    </div>
+
+    <!-- Score breakdown bars -->
+    <div class="bars-section">
+      <div id="score-bars"></div>
+    </div>
+
+    <!-- Alerts -->
+    <div class="alerts-section" id="alerts-section"></div>
+
+    <!-- Detected trackers list -->
+    <div class="trackers-section" id="trackers-section" style="display:none">
+      <div class="section-title">Trackers Detected</div>
+      <div id="tracker-list"></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <a class="btn btn-primary" id="open-full" href="#" target="_blank">Full Analysis →</a>
+    <button class="btn btn-secondary" id="reanalyze-btn">↺ Refresh</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
