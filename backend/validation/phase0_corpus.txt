@@ -1,0 +1,57 @@
+# Phase 0 validation corpus template
+# One site per line. Keep this small and manually curated (6-10 sites).
+#
+# IMPORTANT:
+# - `example.com` is only a connectivity/no-banner control, not a real consent-banner test.
+# - Use your own representative targets for consent behavior.
+#
+# Recommended two-pass corpus setup:
+#
+# PASS A (baseline stability):
+# 1) simple banner
+# 2) reject flow
+# 3) manage-preferences flow
+# 4) Turkish site
+# 5) no-banner control
+#
+# PASS B (stress cases):
+# 6) likely login wall
+# 7) likely challenge/bot block
+# 8) SPA-like site
+#
+# Keep comments and blank lines if useful.
+
+# PASS A — baseline
+
+# no-banner at homepage
+wikipedia.org
+
+# reject flow candidate
+# consent/settings candidate
+# IKEA pop up currently exposes "Cookie settings" and "Privacy & Cookie statement"
+ikea.com
+
+# manage-preferences candidate
+# Microsoft footer currently exposes "Your Privacy Choices" and "Manage cookies"
+microsoft.com
+
+# Turkish site candidate
+# Trendyol pop up currently exposes "Çerez Tercihleri" and "Kişisel Verilerin Korunması",  managed cookies, multi branch cookie policies
+trendyol.com
+
+
+# PASS B — stress
+
+# login wall
+# currently redirects to /accounts/login
+instagram.com
+
+# likely challenge / bot-block / JS-verification case
+# trial fetch returned bot verification
+#openai.com can also be used for this
+booking.com
+
+# SPA-like / app-like site
+# footer privacy links, managed cookies, multi branch cookie policies
+# booking.com is an example too
+openai.com

@@ -34,8 +34,67 @@ cd backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+playwright install chromium
 uvicorn main:app --reload --port 8000
 ```
+
+## Stateful Batch Crawl (S0/S1/S2 + Human-in-the-loop)
+
+Run automated crawl for a list of domains with consent-state comparison:
+
+- **S0**: baseline (no consent click)
+- **S1**: attempt reject flow
+- **S2**: attempt accept flow
+
+The batch runner flags difficult cases (`recaptcha`, bot/access blocks, login-required) and writes a human review queue.
+
+```bash
+cd backend
+source venv/bin/activate
+python run_batch_stateful.py --sites ../Project-Demo/sites.txt --outdir ../batch_out
+```
+
+Outputs:
+
+- `results.jsonl`: per-site full state metrics and derived consent deltas
+- `human_queue.jsonl`: only sites that require manual intervention
+- `artifacts/<site>/S0.png|S1.png|S2.png`: screenshots for review
+
+## Phase 0 Validation (stability before DB schema)
+
+Use this before implementing session persistence/resume tables.
+
+1) Prepare a small representative corpus in `backend/validation/phase0_corpus.txt`.
+
+2) Run repeated headless validation:
+
+```bash
+cd backend
+source venv/bin/activate
+python phase0_validate.py \
+	--sites validation/phase0_corpus.txt \
+	--outdir ../phase0_out \
+	--repeats 3 \
+	--with-policy
+```
+
+3) Optional headful rerun for flagged/unstable sites:
+
+```bash
+python phase0_validate.py \
+	--sites validation/phase0_corpus.txt \
+	--outdir ../phase0_out \
+	--repeats 3 \
+	--with-policy \
+	--headful-rerun-flagged
+```
+
+Main outputs:
+
+- `results_repeat_<n>.jsonl`: per-repeat raw results
+- `phase0_summary.json`: machine-readable stability report
+- `phase0_summary.md`: quick human-readable summary
+- `artifacts/repeat_<n>/<site>/`: screenshots for manual review
 
 ### Frontend
 ```bash

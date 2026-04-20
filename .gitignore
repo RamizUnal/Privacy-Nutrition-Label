@@ -31,3 +31,8 @@ dist/
 
 # Claude config
 .claude/
+
+#test results
+phase*_out/
+phase*_smoke_out/
+batch_smoke_out/

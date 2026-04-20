@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean,
-    DateTime, ForeignKey, JSON
+    DateTime, ForeignKey, JSON, UniqueConstraint
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -95,3 +95,102 @@ class PolicyChange(Base):
 
     def __repr__(self) -> str:
         return f"<PolicyChange domain={self.domain} +{self.added_lines}/-{self.removed_lines}>"
+
+
+class CrawlRun(Base):
+    """
+    Tracks one batch crawl execution configuration and lifecycle.
+    Kept separate from policy analysis history.
+    """
+    __tablename__ = "crawl_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(64), nullable=False, unique=True, index=True)
+    status = Column(String(32), nullable=False, default="created", index=True)
+
+    started_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+    finished_at = Column(DateTime)
+
+    total_sites = Column(Integer, default=0)
+    processed_sites = Column(Integer, default=0)
+    requires_human_count = Column(Integer, default=0)
+
+    config_json = Column(JSON)
+    environment_json = Column(JSON)
+    error = Column(Text)
+
+    sessions = relationship("CrawlSession", back_populates="crawl_run", cascade="all, delete-orphan")
+
+    def __repr__(self) -> str:
+        return f"<CrawlRun run_id={self.run_id} status={self.status}>"
+
+
+class CrawlSession(Base):
+    """
+    Tracks crawl progress and metadata for one site within a crawl run.
+    """
+    __tablename__ = "crawl_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    crawl_run_id = Column(Integer, ForeignKey("crawl_runs.id"), nullable=False, index=True)
+
+    site = Column(String(1000), nullable=False)
+    domain = Column(String(255), index=True)
+    site_key = Column(String(255), index=True)
+
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    requires_human = Column(Boolean, default=False, index=True)
+    human_reasons = Column(JSON)
+
+    retry_count = Column(Integer, default=0)
+    first_attempt_at = Column(DateTime)
+    last_attempt_at = Column(DateTime)
+    completed_at = Column(DateTime)
+
+    artifacts_dir = Column(String(2000))
+    storage_state_path = Column(String(2000))
+    context_path = Column(String(2000))
+
+    crawl_run = relationship("CrawlRun", back_populates="sessions")
+    stages = relationship("CrawlStage", back_populates="crawl_session", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("crawl_run_id", "site", name="uq_crawl_run_site"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CrawlSession run={self.crawl_run_id} site={self.site} status={self.status}>"
+
+
+class CrawlStage(Base):
+    """
+    Stores per-state (`S0`, `S1`, `S2`) execution metadata and summarized outputs.
+    """
+    __tablename__ = "crawl_stages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    crawl_session_id = Column(Integer, ForeignKey("crawl_sessions.id"), nullable=False, index=True)
+
+    stage = Column(String(8), nullable=False, index=True)  # S0, S1, S2
+    status = Column(String(32), nullable=False, default="pending", index=True)
+
+    started_at = Column(DateTime)
+    finished_at = Column(DateTime)
+
+    action_raw = Column(String(128))
+    action_semantic = Column(String(128))
+    banner_detected = Column(Boolean)
+    challenge_json = Column(JSON)
+
+    metrics_json = Column(JSON)
+    screenshot_path = Column(String(2000))
+    error = Column(Text)
+
+    crawl_session = relationship("CrawlSession", back_populates="stages")
+
+    __table_args__ = (
+        UniqueConstraint("crawl_session_id", "stage", name="uq_crawl_session_stage"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CrawlStage session={self.crawl_session_id} stage={self.stage} status={self.status}>"
