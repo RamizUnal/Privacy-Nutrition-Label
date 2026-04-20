@@ -39,13 +39,14 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
 
   const breakdown = result.score_breakdown;
   const dims = [
-    { key: 'data_collection', label: 'Data Collection', score: breakdown?.data_collection },
-    { key: 'sharing', label: 'Sharing', score: breakdown?.sharing },
-    { key: 'transparency', label: 'Transparency', score: breakdown?.transparency },
-    { key: 'rights', label: 'Rights', score: breakdown?.rights },
-    { key: 'retention', label: 'Retention', score: breakdown?.retention },
-    { key: 'dark_patterns', label: 'Dark Patterns', score: breakdown?.dark_patterns },
-    { key: 'technical', label: 'Technical', score: breakdown?.technical },
+    { key: 'data_collection', label: 'Data Collection',   score: breakdown?.data_collection },
+    { key: 'sharing',         label: 'Third-Party Share', score: breakdown?.sharing },
+    { key: 'transparency',    label: 'Transparency',       score: breakdown?.transparency },
+    { key: 'rights',          label: 'User Rights',        score: breakdown?.rights },
+    { key: 'retention',       label: 'Data Retention',     score: breakdown?.retention },
+    { key: 'dark_patterns',   label: 'Dark Patterns',      score: breakdown?.dark_patterns },
+    { key: 'technical',       label: 'Technical Safety',   score: breakdown?.technical },
+    { key: 'mismatch',        label: 'Policy–Behaviour',   score: breakdown?.mismatch },
   ];
 
   const getBarColor = (score: number) => {
@@ -131,6 +132,26 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
                 {result.policy_found ? '✓ Yes' : '✗ No'}
               </span>
             </div>
+            {result.policy_url && (
+              <div className="flex justify-between items-start text-xs font-mono gap-2">
+                <span className="text-white/30 flex-shrink-0">Policy URL</span>
+                <a
+                  href={result.policy_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent-green/70 hover:text-accent-green truncate max-w-[160px] text-right transition-colors underline underline-offset-2"
+                  title={result.policy_url}
+                >
+                  {(() => {
+                    try {
+                      return new URL(result.policy_url).hostname.replace('www.', '');
+                    } catch {
+                      return result.policy_url.slice(0, 40);
+                    }
+                  })()}
+                </a>
+              </div>
+            )}
             {result.policy_word_count > 0 && (
               <div className="flex justify-between text-xs font-mono">
                 <span className="text-white/30">Policy length</span>
@@ -140,16 +161,10 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
             {result.policy_discovery_method && (
               <div className="flex justify-between text-xs font-mono">
                 <span className="text-white/30">Found via</span>
-                <span className={
-                  result.policy_discovery_method === 'ai_discovery'
-                    ? 'text-violet-400'
-                    : result.policy_discovery_method === 'sitemap'
-                      ? 'text-blue-400'
-                      : 'text-white/50'
-                }>
-                  {result.policy_discovery_method === 'canonical_path' && '📍 canonical path'}
-                  {result.policy_discovery_method === 'link_scan'      && '🔗 link scan'}
-                  {result.policy_discovery_method === 'sitemap'        && '🗺 sitemap'}
+                <span className={result.policy_discovery_method === 'ai_discovery' ? 'text-violet-400' : result.policy_discovery_method === 'sitemap' ? 'text-blue-400' : 'text-white/50'}>
+                  {result.policy_discovery_method === 'canonical_path' && 'canonical path'}
+                  {result.policy_discovery_method === 'link_scan'      && 'link scan'}
+                  {result.policy_discovery_method === 'sitemap'        && 'sitemap'}
                   {result.policy_discovery_method === 'ai_discovery'   && '✦ AI discovery'}
                 </span>
               </div>

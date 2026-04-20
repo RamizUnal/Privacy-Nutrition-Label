@@ -1,0 +1,124 @@
+import React from 'react';
+import type { DynamicCrawlingResult } from '../../types';
+
+interface Props {
+  dynamic: DynamicCrawlingResult | undefined;
+}
+
+export default function DynamicScan({ dynamic }: Props) {
+  if (!dynamic) {
+    return (
+      <div className="text-center py-16 text-white/30 font-mono text-sm">
+        Dynamic crawling data (S0/S1/S2) is unavailable. This may take longer to generate or was not enabled.
+      </div>
+    );
+  }
+
+  const { S0, S1, S2, mismatch_detected } = dynamic;
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-panel border border-border rounded-xl p-5">
+        <h3 className="font-mono text-sm text-white/60 mb-2 uppercase tracking-wider font-semibold">
+          3-State Dynamic Crawling
+        </h3>
+        <p className="text-xs text-white/40 mb-5 leading-relaxed">
+          The automated crawler visited the site in 3 distinct consent states to verify if tracking behavior matches the stated policy.
+        </p>
+
+        {mismatch_detected && (
+          <div className="border border-red-800/50 bg-red-900/10 rounded-xl p-4 mb-6">
+            <p className="font-mono text-sm text-red-400 font-semibold mb-1">⚠ Consent Mismatch Detected</p>
+            <p className="text-xs text-red-400/60">
+              The site continued to deploy the same or more trackers during the <b>Reject (S1)</b> state compared to the <b>Baseline (S0)</b>. 
+              This indicates non-compliance strictly tracking users before or after consent is explicitly denied.
+            </p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          
+          {/* S0 State */}
+          <div className="border border-border rounded-lg p-4 bg-surface/30">
+            <div className="flex justify-between items-center mb-3">
+              <span className="font-mono text-xs text-white/50 uppercase">S0 - Baseline</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/5 text-white/40">Pre-Consent</span>
+            </div>
+            <div className="text-3xl font-mono font-bold mb-1">{S0.total_trackers}</div>
+            <div className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Trackers Loaded</div>
+            
+            <div className="mt-4 pt-4 border-t border-white/5 space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-white/30">Cookies</span>
+                <span className="font-mono font-bold text-white/70">{S0.total_cookies}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-white/30">Network Requests</span>
+                <span className="font-mono font-bold text-white/70">{S0.total_requests}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-white/30">3rd Parties</span>
+                <span className="font-mono font-bold text-white/70">{S0.third_party_domains?.length || 0}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* S1 State */}
+          <div className="border border-border rounded-lg p-4 bg-surface/30 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-1 bg-orange-500/50 h-full"></div>
+            <div className="flex justify-between items-center mb-3">
+              <span className="font-mono text-xs text-white/50 uppercase">S1 - Reject</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-orange-500/10 text-orange-400">Consent Denied</span>
+            </div>
+            <div className={`text-3xl font-mono font-bold mb-1 ${S1.total_trackers >= S0.total_trackers && S0.total_trackers > 0 ? 'text-red-400' : 'text-orange-300'}`}>
+              {S1.total_trackers}
+            </div>
+            <div className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Trackers Loaded</div>
+            
+            <div className="mt-4 pt-4 border-t border-white/5 space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-white/30">Cookies</span>
+                <span className="font-mono font-bold text-white/70">{S1.total_cookies}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-white/30">Network Requests</span>
+                <span className="font-mono font-bold text-white/70">{S1.total_requests}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-white/30">3rd Parties</span>
+                <span className="font-mono font-bold text-white/70">{S1.third_party_domains?.length || 0}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* S2 State */}
+          <div className="border border-border rounded-lg p-4 bg-surface/30 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-1 bg-green-500/50 h-full"></div>
+            <div className="flex justify-between items-center mb-3">
+              <span className="font-mono text-xs text-white/50 uppercase">S2 - Accept</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-green-500/10 text-green-400">Consent Granted</span>
+            </div>
+            <div className="text-3xl font-mono font-bold mb-1 text-green-300">{S2.total_trackers}</div>
+            <div className="text-[10px] font-mono text-white/30 uppercase tracking-widest">Trackers Loaded</div>
+            
+            <div className="mt-4 pt-4 border-t border-white/5 space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-white/30">Cookies</span>
+                <span className="font-mono font-bold text-white/70">{S2.total_cookies}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-white/30">Network Requests</span>
+                <span className="font-mono font-bold text-white/70">{S2.total_requests}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-white/30">3rd Parties</span>
+                <span className="font-mono font-bold text-white/70">{S2.third_party_domains?.length || 0}</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}

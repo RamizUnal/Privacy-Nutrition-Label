@@ -175,6 +175,22 @@ export interface TrackerResult {
   privacy_sandbox_detected: boolean;
 }
 
+export interface DynamicState {
+  total_requests: number;
+  third_party_domains: string[];
+  trackers_detected: any[];
+  total_trackers: number;
+  cookies: CookieInfo[];
+  total_cookies: number;
+}
+
+export interface DynamicCrawlingResult {
+  S0: DynamicState;
+  S1: DynamicState;
+  S2: DynamicState;
+  mismatch_detected: boolean;
+}
+
 export interface ScoreBreakdown {
   data_collection: number;
   sharing: number;
@@ -183,6 +199,7 @@ export interface ScoreBreakdown {
   retention: number;
   dark_patterns: number;
   technical: number;
+  mismatch: number;
   weights: Record<string, number>;
 }
 
@@ -196,6 +213,37 @@ export interface Bonus {
   dimension: string;
   reason: string;
   bonus: number;
+}
+
+// ─── Mismatch Types ──────────────────────────────────────────────────────
+
+export interface Mismatch {
+  mismatch_type: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  title: string;
+  policy_claim: string;
+  observed_behavior: string;
+  evidence_policy: string;
+  evidence_observed: Record<string, any>;
+  gdpr_reference: string;
+  recommendation: string;
+}
+
+export interface MismatchAnalysis {
+  mismatches: Mismatch[];
+  total_count: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  mismatch_score: number;
+  consent_effective: boolean;
+  consent_effectiveness_pct: number;
+  pre_consent_tracking: boolean;
+  pre_consent_tracker_count: number;
+  undeclared_tracker_count: number;
+  undeclared_tracker_names: string[];
+  summary: string;
 }
 
 export interface AnalysisResult {
@@ -220,6 +268,8 @@ export interface AnalysisResult {
   rights: RightsAnalysis;
   third_parties: ThirdPartyAnalysis;
   trackers: TrackerResult;
+  dynamic_crawling?: DynamicCrawlingResult;
+  mismatch_analysis?: MismatchAnalysis;
 }
 
 export interface HistoryEntry {

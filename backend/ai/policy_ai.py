@@ -118,6 +118,19 @@ Retention Policy: {retention} | Vagueness Score: {vagueness}/100 | Transparency:
 Score Penalties: {'; '.join(penalties) if penalties else 'None'}
 Score Bonuses: {'; '.join(bonuses) if bonuses else 'None'}"""
 
+    # Add mismatch context if available
+    mismatch_data = analysis_result.get("mismatch_analysis")
+    if mismatch_data and mismatch_data.get("total_count", 0) > 0:
+        mismatch_items = mismatch_data.get("mismatches", [])
+        mismatch_summaries = [f"- {m.get('title', '')} (severity: {m.get('severity', 'unknown')})" for m in mismatch_items[:5]]
+        context_summary += f"""
+Policy-Behavior Mismatches: {mismatch_data.get('total_count', 0)} detected (Score: {mismatch_data.get('mismatch_score', 'N/A')}/100)
+Consent Effective: {'YES' if mismatch_data.get('consent_effective') else 'NO — rejecting cookies does NOT reduce tracking'}
+Pre-Consent Tracking: {'YES — {0} trackers active before consent'.format(mismatch_data.get('pre_consent_tracker_count', 0)) if mismatch_data.get('pre_consent_tracking') else 'No'}
+Undeclared Trackers: {mismatch_data.get('undeclared_tracker_count', 0)} ({', '.join(mismatch_data.get('undeclared_tracker_names', [])[:5]) or 'None'})
+Mismatch Details:
+{chr(10).join(mismatch_summaries)}"""
+
     policy_excerpt = (policy_text[:3500] if policy_text else "No policy text available")
 
     prompt = f"""Analyze the privacy practices for {domain}.

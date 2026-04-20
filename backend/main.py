@@ -34,6 +34,8 @@ from scoring.privacy_scorer import calculate_score
 from ai.policy_ai import analyze_policy_ai, stream_chat_response
 from ai.third_party_researcher import research_ecosystem
 from ai.claude_client import is_available as ai_available
+from tracker.dynamic_crawler import run_3_state_crawl
+from analyzer.mismatch_analyzer import analyze_mismatches
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -167,6 +169,13 @@ async def analyze_website(
         except Exception:
             pass
 
+    # ── Dynamic Crawl (Playwright) ───────────────────────────────────────────
+    dynamic_result = None
+    try:
+        dynamic_result = await run_3_state_crawl(domain, req.url)
+    except Exception as e:
+        print(f"Dynamic crawl failed: {e}")
+
     # ── Policy analysis ────────────────────────────────────────────────────────
     policy_text = crawl.policy_text or ""
 
@@ -181,6 +190,8 @@ async def analyze_website(
             dark_patterns=_empty_dark_patterns(),
             tracker_result=tracker_result,
             policy_found=False,
+            dynamic_crawling=dynamic_result,
+            mismatch_analysis=None,
         )
         result = _build_result(
             url=req.url,
@@ -189,6 +200,8 @@ async def analyze_website(
             analysis={},
             tracker_result=tracker_result,
             score=score_breakdown,
+            dynamic_result=dynamic_result,
+            mismatch_result=None,
         )
 
     elif len(policy_text) < 100:
@@ -199,7 +212,7 @@ async def analyze_website(
         # → We still give credit for HAVING a policy
         # → Tracker/cookie analysis is fully available (homepage HTML)
         # → Policy dimensions get neutral "unknown" scores (not 0)
-        score_breakdown = _score_js_rendered_policy(tracker_result)
+        score_breakdown = _score_js_rendered_policy(tracker_result, dynamic_result)
         result = _build_result(
             url=req.url,
             domain=domain,
@@ -213,6 +226,8 @@ async def analyze_website(
             },
             tracker_result=tracker_result,
             score=score_breakdown,
+            dynamic_result=dynamic_result,
+            mismatch_result=None,
         )
 
     else:
@@ -227,6 +242,21 @@ async def analyze_website(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
+        # ── Policy-Behaviour Mismatch Analysis ─────────────────────────────
+        mismatch_result = None
+        mismatch_dict = None
+        try:
+            import dataclasses as _dc_mod
+            mismatch_result = analyze_mismatches(
+                policy_text=policy_text,
+                policy_analysis=analysis_dict,
+                dynamic_result=dynamic_result,
+                tracker_result=tracker_result,
+            )
+            mismatch_dict = _dc(mismatch_result)
+        except Exception as e:
+            print(f"Mismatch analysis failed: {e}")
+
         score_breakdown = calculate_score(
             data_types=data_types,
             third_parties=third_parties,
@@ -236,6 +266,8 @@ async def analyze_website(
             dark_patterns=dark_patterns,
             tracker_result=tracker_result,
             policy_found=True,
+            dynamic_crawling=dynamic_result,
+            mismatch_analysis=mismatch_dict,
         )
 
         result = _build_result(
@@ -245,6 +277,8 @@ async def analyze_website(
             analysis=analysis_dict,
             tracker_result=tracker_result,
             score=score_breakdown,
+            dynamic_result=dynamic_result,
+            mismatch_result=mismatch_dict,
         )
 
     # ── Persist ────────────────────────────────────────────────────────────────
@@ -333,6 +367,37 @@ async def compare_policies(domain: str, db: AsyncSession = Depends(get_db)):
             "result": older.result_json,
         },
         "score_delta": newer.overall_score - older.overall_score,
+    }
+
+
+@app.get("/policy/text/{domain}")
+async def get_policy_text_for_domain(domain: str, db: AsyncSession = Depends(get_db)):
+    """
+    Return the stored raw policy text for a domain, plus metadata.
+    """
+    from database.models import PolicyVersion
+    from sqlalchemy import select, desc
+
+    result = await db.execute(
+        select(PolicyVersion)
+        .where(PolicyVersion.domain == domain)
+        .where(PolicyVersion.is_current == True)
+        .order_by(desc(PolicyVersion.fetched_at))
+        .limit(1)
+    )
+    version = result.scalar_one_or_none()
+
+    if not version:
+        raise HTTPException(status_code=404, detail=f"No policy stored for '{domain}'")
+
+    return {
+        "domain": domain,
+        "policy_url": version.policy_url,
+        "word_count": version.word_count,
+        "fetched_at": version.fetched_at.isoformat() if version.fetched_at else None,
+        "content_hash": version.content_hash,
+        "is_current": version.is_current,
+        "text": version.raw_text or "",
     }
 
 
@@ -429,7 +494,7 @@ async def ai_chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
 # Result builder
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_result(url, domain, crawl, analysis, tracker_result, score) -> dict:
+def _build_result(url, domain, crawl, analysis, tracker_result, score, dynamic_result=None, mismatch_result=None) -> dict:
     tr = _dc(tracker_result) if tracker_result else {}
     return {
         "url": url,
@@ -450,6 +515,7 @@ def _build_result(url, domain, crawl, analysis, tracker_result, score) -> dict:
             "retention": score.retention_score,
             "dark_patterns": score.dark_patterns_score,
             "technical": score.technical_score,
+            "mismatch": score.mismatch_score,
             "weights": score.weights,
         },
         "penalties": score.penalties,
@@ -461,6 +527,8 @@ def _build_result(url, domain, crawl, analysis, tracker_result, score) -> dict:
         "rights": analysis.get("rights", {}),
         "third_parties": analysis.get("third_parties", {}),
         "trackers": tr,
+        "dynamic_crawling": dynamic_result,
+        "mismatch_analysis": mismatch_result,
     }
 
 
@@ -506,7 +574,7 @@ def _empty_dark_patterns():
                                 overall_risk="none", consent_mechanism_quality="unclear")
 
 
-def _score_js_rendered_policy(tracker_result) -> "ScoreBreakdown":
+def _score_js_rendered_policy(tracker_result, dynamic_result=None) -> "ScoreBreakdown":
     """
     Score a site whose privacy policy was found but text couldn't be extracted
     (JavaScript-rendered SPA).
@@ -522,22 +590,39 @@ def _score_js_rendered_policy(tracker_result) -> "ScoreBreakdown":
     penalties = []
     bonuses = [{"dimension": "general", "reason": "Privacy policy page exists and is accessible", "bonus": 10}]
 
+    total_trackers = 0
     if tracker_result:
         tr = tracker_result if isinstance(tracker_result, dict) else (
             {k: getattr(tracker_result, k, None) for k in vars(tracker_result)} if hasattr(tracker_result, '__dict__') else {}
         )
         total_trackers = tr.get("total_trackers", 0) if isinstance(tr, dict) else getattr(tracker_result, "total_trackers", 0)
-        if total_trackers == 0:
-            tech_score = 90
-            bonuses.append({"dimension": "technical", "reason": "No trackers detected", "bonus": 10})
-        elif total_trackers <= 3:
-            tech_score = 70
-        elif total_trackers <= 8:
-            tech_score = 45
-            penalties.append({"dimension": "technical", "reason": f"{total_trackers} trackers detected", "penalty": 15})
-        else:
-            tech_score = 20
-            penalties.append({"dimension": "technical", "reason": f"{total_trackers} trackers detected", "penalty": 30})
+        
+    if total_trackers == 0:
+        tech_score = 90
+        bonuses.append({"dimension": "technical", "reason": "No trackers detected", "bonus": 10})
+    elif total_trackers <= 3:
+        tech_score = 70
+    elif total_trackers <= 8:
+        tech_score = 45
+        penalties.append({"dimension": "technical", "reason": f"{total_trackers} trackers detected", "penalty": 15})
+    else:
+        tech_score = 20
+        penalties.append({"dimension": "technical", "reason": f"{total_trackers} trackers detected", "penalty": 30})
+
+    if dynamic_result:
+        s0 = dynamic_result.get("S0", {})
+        s1 = dynamic_result.get("S1", {})
+        s0_trackers = s0.get("total_trackers", 0)
+        s1_trackers = s1.get("total_trackers", 0)
+        mismatch = dynamic_result.get("mismatch_detected", False)
+
+        if mismatch:
+            tech_score -= 25
+            penalties.append({"dimension": "technical", "reason": f"Consent mismatch: Tracking behavior unchanged or worsened after explicitly rejecting consent (S0: {s0_trackers}, S1: {s1_trackers})", "penalty": 25})
+        elif s0_trackers > 0 and s1_trackers < s0_trackers:
+            bonuses.append({"dimension": "technical", "reason": f"Trackers successfully reduced after rejecting consent (S0: {s0_trackers} -> S1: {s1_trackers})", "bonus": 10})
+
+    tech_score = max(0, tech_score)
 
     penalties.append({
         "dimension": "transparency",
@@ -552,15 +637,17 @@ def _score_js_rendered_policy(tracker_result) -> "ScoreBreakdown":
     rights_score = 50      # can't verify rights coverage
     retention_score = 50   # can't verify retention periods
     dark_patterns_score = 70  # no dark patterns detectable (benefit of the doubt)
+    mismatch_score = 50    # can't assess mismatch without policy text
 
     weights = {
-        "data_collection": 0.20,
-        "sharing": 0.20,
-        "transparency": 0.15,
-        "rights": 0.15,
-        "retention": 0.12,
-        "dark_patterns": 0.10,
+        "data_collection": 0.18,
+        "sharing": 0.18,
+        "transparency": 0.13,
+        "rights": 0.13,
+        "retention": 0.10,
+        "dark_patterns": 0.08,
         "technical": 0.08,
+        "mismatch": 0.12,
     }
     overall = int(
         data_score * weights["data_collection"]
@@ -570,6 +657,7 @@ def _score_js_rendered_policy(tracker_result) -> "ScoreBreakdown":
         + retention_score * weights["retention"]
         + dark_patterns_score * weights["dark_patterns"]
         + tech_score * weights["technical"]
+        + mismatch_score * weights["mismatch"]
     )
 
     from scoring.privacy_scorer import _grade, _risk_level
@@ -590,6 +678,7 @@ def _score_js_rendered_policy(tracker_result) -> "ScoreBreakdown":
         retention_score=retention_score,
         dark_patterns_score=dark_patterns_score,
         technical_score=tech_score,
+        mismatch_score=mismatch_score,
         weights=weights,
         penalties=penalties,
         bonuses=bonuses,
