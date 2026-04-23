@@ -11,6 +11,9 @@ import DarkPatterns from './DarkPatterns';
 import Rights from './Rights';
 import Sentiment from './Sentiment';
 import Cookies from './Cookies';
+import DynamicScan from './DynamicScan';
+import MismatchPanel from './MismatchPanel';
+import PolicyHistory from './PolicyHistory';
 import AIInsights from './AIInsights';
 import EcosystemResearch from './EcosystemResearch';
 import PrivacyAssistant from './PrivacyAssistant';
@@ -21,22 +24,27 @@ interface Props {
 }
 
 const TABS = [
-  { id: 'overview',      label: 'Overview',       group: 'core' },
-  { id: 'data',          label: 'Data Collected',  group: 'core' },
-  { id: 'sharing',       label: 'Third Parties',   group: 'core' },
-  { id: 'trackers',      label: 'Trackers',        group: 'core' },
-  { id: 'cookies',       label: 'Cookies',         group: 'core' },
-  { id: 'retention',     label: 'Retention',       group: 'core' },
-  { id: 'dark_patterns', label: 'Dark Patterns',   group: 'core' },
-  { id: 'rights',        label: 'Rights',          group: 'core' },
-  { id: 'transparency',  label: 'Transparency',    group: 'core' },
-  { id: 'ai_insights',   label: '✦ AI Insights',   group: 'ai'   },
-  { id: 'ecosystem',     label: '🕸 Ecosystem',    group: 'ai'   },
-  { id: 'assistant',     label: '💬 Assistant',    group: 'ai'   },
+  { id: 'overview',      label: 'Overview',         group: 'core' },
+  { id: 'dynamic',       label: 'Dynamic Scan',     group: 'core' },
+  { id: 'mismatch',      label: 'Mismatch',         group: 'core' },
+  { id: 'data',          label: 'Data Collected',   group: 'core' },
+  { id: 'sharing',       label: 'Third Parties',    group: 'core' },
+  { id: 'trackers',      label: 'Trackers',         group: 'core' },
+  { id: 'cookies',       label: 'Cookies',          group: 'core' },
+  { id: 'retention',     label: 'Retention',        group: 'core' },
+  { id: 'dark_patterns', label: 'Dark Patterns',    group: 'core' },
+  { id: 'rights',        label: 'Rights',           group: 'core' },
+  { id: 'transparency',  label: 'Transparency',     group: 'core' },
+  { id: 'history',       label: 'Policy History',   group: 'core' },
+  { id: 'ai_insights',   label: '✦ AI Insights',    group: 'ai'   },
+  { id: 'ecosystem',     label: 'Ecosystem',        group: 'ai'   },
+  { id: 'assistant',     label: '💬 Assistant',     group: 'ai'   },
 ];
 
 export default function PrivacyLabel({ result, onReanalyze }: Props) {
   const [activeTab, setActiveTab] = useState('overview');
+
+  const hasMismatches = (result.mismatch_analysis?.total_count ?? 0) > 0;
 
   return (
     <div className="space-y-6">
@@ -49,7 +57,8 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
           {TABS.map((tab, idx) => {
             const hasAlert = (
               (tab.id === 'dark_patterns' && result.dark_patterns?.count > 0) ||
-              (tab.id === 'trackers' && result.trackers?.fingerprinting_detected)
+              (tab.id === 'trackers'      && result.trackers?.fingerprinting_detected) ||
+              (tab.id === 'mismatch'      && hasMismatches)
             );
             const isAI = tab.group === 'ai';
             const showSeparator = isAI && TABS[idx - 1]?.group === 'core';
@@ -65,10 +74,14 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
                     activeTab === tab.id
                       ? isAI
                         ? 'border-violet-400 text-violet-300'
-                        : 'border-accent-green text-accent-green'
+                        : tab.id === 'mismatch'
+                          ? 'border-orange-400 text-orange-300'
+                          : 'border-accent-green text-accent-green'
                       : isAI
                         ? 'border-transparent text-violet-400/50 hover:text-violet-300/80'
-                        : 'border-transparent text-white/40 hover:text-white/70'
+                        : tab.id === 'mismatch'
+                          ? 'border-transparent text-orange-400/50 hover:text-orange-300/80'
+                          : 'border-transparent text-white/40 hover:text-white/70'
                   }`}
                 >
                   {tab.label}
@@ -85,6 +98,8 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
       {/* Tab content */}
       <div className="pb-8">
         {activeTab === 'overview'      && <NutritionFacts result={result} onTabChange={setActiveTab} />}
+        {activeTab === 'dynamic'       && <DynamicScan dynamic={result.dynamic_crawling} />}
+        {activeTab === 'mismatch'      && <MismatchPanel mismatch={result.mismatch_analysis} />}
         {activeTab === 'data'          && <DataTypes dataTypes={result.data_types || []} />}
         {activeTab === 'sharing'       && <ThirdParties analysis={result.third_parties} />}
         {activeTab === 'trackers'      && <Trackers trackers={result.trackers} />}
@@ -93,6 +108,7 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
         {activeTab === 'dark_patterns' && <DarkPatterns analysis={result.dark_patterns} />}
         {activeTab === 'rights'        && <Rights rights={result.rights} />}
         {activeTab === 'transparency'  && <Sentiment sentiment={result.sentiment} />}
+        {activeTab === 'history'       && <PolicyHistory domain={result.domain} />}
 
         {activeTab === 'ai_insights' && (
           <AIInsights

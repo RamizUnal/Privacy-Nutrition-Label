@@ -63,6 +63,7 @@ class ScoreBreakdown:
     retention_score: int
     dark_patterns_score: int
     technical_score: int
+    mismatch_score: int
 
     # Weight of each dimension
     weights: Dict[str, float]
@@ -96,6 +97,8 @@ def calculate_score(
     dark_patterns,       # DarkPatternAnalysis
     tracker_result,      # TrackerDetectionResult
     policy_found: bool,
+    dynamic_crawling: Optional[dict] = None,
+    mismatch_analysis: Optional[dict] = None,
 ) -> ScoreBreakdown:
 
     penalties: List[Dict] = []
@@ -104,10 +107,10 @@ def calculate_score(
     # ── If no policy found, score is very low ─────────────────────────────────
     if not policy_found:
         return ScoreBreakdown(
-            overall=5,
-            grade="F",
-            risk_level="critical",
-            summary="No privacy policy found. This is a major compliance violation under GDPR and CCPA.",
+            overall=-1,
+            grade="N/A",
+            risk_level="unknown",
+            summary="No privacy policy found. Score cannot be calculated without a policy to analyze.",
             data_collection_score=0,
             sharing_score=0,
             transparency_score=0,
@@ -115,8 +118,9 @@ def calculate_score(
             retention_score=0,
             dark_patterns_score=0,
             technical_score=0,
+            mismatch_score=0,
             weights={},
-            penalties=[{"reason": "No privacy policy found", "penalty": 95}],
+            penalties=[{"reason": "No privacy policy found", "penalty": 0}],
             bonuses=[],
         )
 
@@ -314,17 +318,65 @@ def calculate_score(
     if tracker_result and not tracker_result.trackers:
         bonuses.append({"dimension": "technical", "reason": "No trackers detected on website", "bonus": 15})
 
+    # ── Dynamic Crawling Evaluation (S0, S1, S2) ───────────────────────────────
+    if dynamic_crawling:
+        s0 = dynamic_crawling.get("S0", {})
+        s1 = dynamic_crawling.get("S1", {})
+        s0_trackers = s0.get("total_trackers", 0)
+        s1_trackers = s1.get("total_trackers", 0)
+        mismatch = dynamic_crawling.get("mismatch_detected", False)
+
+        if mismatch:
+            # S1 (Reject) resulted in same or more trackers than S0 (Baseline)
+            technical_score -= 25
+            penalties.append({"dimension": "technical", "reason": f"Consent mismatch: Tracking behavior unchanged or worsened after explicitly rejecting consent (S0: {s0_trackers}, S1: {s1_trackers})", "penalty": 25})
+        elif s0_trackers > 0 and s1_trackers < s0_trackers:
+            bonuses.append({"dimension": "technical", "reason": f"Trackers successfully reduced after rejecting consent (S0: {s0_trackers} -> S1: {s1_trackers})", "bonus": 10})
+        
+        if s0_trackers > 5:
+            technical_score -= 10
+            penalties.append({"dimension": "technical", "reason": f"Tracking started before consent (S0/Baseline has {s0_trackers} trackers)", "penalty": 10})
+
     technical_score = max(0, technical_score)
+
+    # ── 8. MISMATCH SCORE (0–100) ──────────────────────────────────────────────
+    # Comes from the mismatch analyzer; defaults to neutral if unavailable
+    m_score = 50  # neutral default when no mismatch analysis
+    if mismatch_analysis:
+        m_score = mismatch_analysis.get("mismatch_score", 50)
+
+        # Add mismatch-specific penalties
+        for mm in mismatch_analysis.get("mismatches", []):
+            if mm.get("severity") == "critical":
+                penalties.append({
+                    "dimension": "mismatch",
+                    "reason": f"Policy-behavior mismatch: {mm.get('title', 'Unknown')}",
+                    "penalty": 25,
+                })
+            elif mm.get("severity") == "high":
+                penalties.append({
+                    "dimension": "mismatch",
+                    "reason": f"Policy-behavior mismatch: {mm.get('title', 'Unknown')}",
+                    "penalty": 15,
+                })
+
+        if mismatch_analysis.get("consent_effective") is True and mismatch_analysis.get("total_count", 0) == 0:
+            bonuses.append({
+                "dimension": "mismatch",
+                "reason": "No policy-behavior mismatches detected. Observed behavior matches policy claims.",
+                "bonus": 10,
+            })
 
     # ── Weighted overall score ─────────────────────────────────────────────────
     weights = {
-        "data_collection": 0.20,
-        "sharing": 0.20,
-        "transparency": 0.15,
-        "rights": 0.15,
-        "retention": 0.12,
-        "dark_patterns": 0.10,
+        "data_collection": 0.18,
+        "sharing": 0.18,
+        "transparency": 0.13,
+        "rights": 0.13,
+        "retention": 0.10,
+        "dark_patterns": 0.08,
         "technical": 0.08,
+        "mismatch": 0.12,
     }
 
     overall = int(
@@ -335,6 +387,7 @@ def calculate_score(
         + retention_score * weights["retention"]
         + dark_patterns_score * weights["dark_patterns"]
         + technical_score * weights["technical"]
+        + m_score * weights["mismatch"]
     )
 
     overall = max(0, min(100, overall))
@@ -362,6 +415,7 @@ def calculate_score(
         retention_score=retention_score,
         dark_patterns_score=dark_patterns_score,
         technical_score=technical_score,
+        mismatch_score=m_score,
         weights=weights,
         penalties=penalties[:20],
         bonuses=bonuses[:10],
