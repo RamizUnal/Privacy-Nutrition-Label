@@ -1,3 +1,4 @@
+
 """
 Privacy Policy Crawler — extraction-first version for Privacy Lens
 
@@ -17,12 +18,9 @@ Design:
    - static fetch + extract
    - if empty / JS shell / gibberish, try Playwright render
    - validate with extraction-first scoring
-6. Return the accepted root policy text directly for downstream analysis.
-
-Note:
-- We intentionally do NOT stitch alternate language copies into one giant text.
-  For this project, the task is to locate and extract a privacy policy as raw text,
-  not to concatenate English/French/German/etc. versions of the same policy.
+6. Once a root policy is accepted, collect a few strong same-site
+   sub-policy pages (cookie, retention, rights, KVKK addendum, etc.)
+   BUT exclude alternate-language copies of the same policy.
 """
 from __future__ import annotations
 
@@ -181,6 +179,18 @@ TIMEOUT = httpx.Timeout(20.0, connect=10.0)
 MAX_CONTENT_LENGTH = 3 * 1024 * 1024
 MAX_SUBPOLICY_FETCHES = 8
 
+LANGUAGE_ALIASES = {
+    "en": "en", "english": "en",
+    "tr": "tr", "turkish": "tr", "turkce": "tr", "türkçe": "tr",
+    "de": "de", "german": "de", "deutsch": "de",
+    "fr": "fr", "french": "fr", "francais": "fr", "français": "fr",
+    "es": "es", "spanish": "es", "espanol": "es", "español": "es",
+    "it": "it", "italian": "it",
+    "pl": "pl", "polish": "pl",
+    "pt": "pt", "portuguese": "pt",
+    "nl": "nl", "dutch": "nl",
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Basic models
@@ -247,6 +257,32 @@ def _url_is_non_privacy_legal(url: str) -> bool:
     return any(sig in lower for sig in NON_PRIVACY_LEGAL_SIGNALS)
 
 
+def _looks_like_product_or_listing_url(url: str) -> bool:
+    """
+    Filter obvious commerce/content pages that should never be treated as privacy-policy candidates.
+    This matters when the user provides a product URL instead of a homepage.
+    """
+    path = _normalized_path(url).lower()
+    full = url.lower()
+
+    product_or_listing_signals = [
+        "/pm-", "-pm-", "hbc", "/urun", "/ürün", "/product", "/products",
+        "/kategori", "/category", "/search", "search?", "/ara", "ara?",
+        "/list", "/listing", "/collections", "/campaign", "/kampanya",
+        "/blog", "/article", "/articles", "/news", "/story"
+    ]
+
+    if any(sig in path or sig in full for sig in product_or_listing_signals):
+        return True
+
+    # Hepsiburada / marketplace-style long product slugs
+    slug = path.strip("/")
+    if slug and slug.count("-") >= 6 and any(tok in slug for tok in ["-p-", "pm-", "hbc"]):
+        return True
+
+    return False
+
+
 _MULTI_PART_PUBLIC_SUFFIXES = {
     "co.uk", "org.uk", "gov.uk", "ac.uk",
     "com.tr", "org.tr", "gov.tr", "edu.tr", "k12.tr",
@@ -270,6 +306,100 @@ def _registrable_domain(host: str) -> str:
 
 def _same_registered_domain(a: str, b: str) -> bool:
     return _registrable_domain(urlparse(a).netloc) == _registrable_domain(urlparse(b).netloc)
+
+
+def _path_segments(url: str) -> List[str]:
+    return [seg for seg in urlparse(url).path.lower().strip("/").split("/") if seg]
+
+
+def _normalize_lang_token(token: str) -> Optional[str]:
+    token = (token or "").lower().strip()
+    if token in LANGUAGE_ALIASES:
+        return LANGUAGE_ALIASES[token]
+    if re.fullmatch(r"[a-z]{2}-[a-z]{2}", token):
+        base = token.split("-")[0]
+        return LANGUAGE_ALIASES.get(base)
+    return None
+
+
+def _detect_lang_bucket_from_url(url: str) -> Optional[str]:
+    for seg in _path_segments(url):
+        lang = _normalize_lang_token(seg)
+        if lang:
+            return lang
+    return None
+
+
+def _detect_lang_bucket_from_label(label: str) -> Optional[str]:
+    text = (label or "").lower()
+    for raw, norm in LANGUAGE_ALIASES.items():
+        if re.search(rf"\b{re.escape(raw)}\b", text):
+            return norm
+    return None
+
+
+def _detect_lang_bucket_from_text(text: str) -> Optional[str]:
+    t = (text or "").lower()
+    markers = {
+        "tr": ["gizlilik", "kişisel veri", "kisisel veri", "veri sorumlusu", "çerez", "cerez", "aydınlatma", "aydinlatma"],
+        "en": ["privacy", "personal data", "personal information", "data controller", "cookies", "retention"],
+        "de": ["datenschutz", "personenbezogene", "cookie-richtlinie"],
+        "fr": ["confidentialité", "données personnelles", "politique de confidentialité"],
+        "es": ["privacidad", "datos personales", "política de privacidad", "politica de privacidad"],
+        "it": ["informativa sulla privacy", "dati personali"],
+        "pl": ["polityka prywatności", "dane osobowe"],
+    }
+    scores = {lang: sum(1 for m in pats if m in t) for lang, pats in markers.items()}
+    best_lang, best_score = max(scores.items(), key=lambda x: x[1])
+    return best_lang if best_score >= 2 else None
+
+
+def _policy_family_key(url: str) -> str:
+    segs = _path_segments(url)
+
+    if segs and _normalize_lang_token(segs[0]):
+        segs = segs[1:]
+
+    if segs and _normalize_lang_token(segs[-1]):
+        segs = segs[:-1]
+
+    return "/" + "/".join(segs)
+
+
+def _is_alternate_language_copy(
+    candidate_url: str,
+    label: str,
+    candidate_text: str,
+    root_url: str,
+    root_text: str,
+) -> bool:
+    """
+    Reject same-policy alternate language mirrors while still allowing real
+    sub-policies (cookie preferences, KVKK addendum, rights pages, etc.).
+    """
+    root_lang = (
+        _detect_lang_bucket_from_url(root_url)
+        or _detect_lang_bucket_from_text(root_text)
+    )
+    cand_lang = (
+        _detect_lang_bucket_from_url(candidate_url)
+        or _detect_lang_bucket_from_label(label)
+        or _detect_lang_bucket_from_text(candidate_text)
+    )
+
+    root_family = _policy_family_key(root_url)
+    cand_family = _policy_family_key(candidate_url)
+
+    # Same policy family + explicit language marker => alternate mirror
+    if root_family == cand_family and cand_lang is not None:
+        if root_lang is None or cand_lang != root_lang:
+            return True
+
+    # Different family but explicit conflicting language marker
+    if root_lang and cand_lang and cand_lang != root_lang:
+        return True
+
+    return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -594,6 +724,9 @@ async def _find_privacy_link_in_html(html: str, base: str) -> Optional[str]:
             continue
         seen.add(full)
 
+        if _looks_like_product_or_listing_url(full):
+            continue
+
         text = a.get_text(separator=" ", strip=True).lower()
         blob = f"{text} {href}".lower()
 
@@ -656,7 +789,7 @@ async def _find_via_sitemap(client: httpx.AsyncClient, base: str) -> Optional[st
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Optional subpolicy helpers (kept for future use, but not used in final text)
+# Policy tree expansion
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _discover_subpolicy_links(html: str, current_url: str, root_url: str, visited: Set[str]) -> List[Tuple[str, str]]:
@@ -672,6 +805,8 @@ def _discover_subpolicy_links(html: str, current_url: str, root_url: str, visite
         if not _same_registered_domain(full, root_url):
             continue
         if full in visited:
+            continue
+        if _looks_like_product_or_listing_url(full):
             continue
         if _url_is_non_privacy_legal(full) or _url_is_interstitial(full):
             continue
@@ -750,17 +885,23 @@ async def fetch_policy_tree(
     root_policy_url: str,
     *,
     root_html: Optional[str] = None,
+    root_text: Optional[str] = None,
 ) -> PolicyTreeResult:
-    root_text = _extract_best_text(root_html or "")
+    root_html = root_html or ""
+    root_text = root_text or _extract_best_text(root_html)
+
     parts = [f"=== MAIN PRIVACY POLICY ({root_policy_url}) ===\n{root_text}"]
     sub_pages: List[Tuple[str, str]] = []
 
     visited: Set[str] = {root_policy_url}
+    seen_policy_families: Set[str] = {_policy_family_key(root_policy_url)}
+
     if not root_html:
         fetched = await _fetch(client, root_policy_url)
         if not fetched:
             return PolicyTreeResult(stitched_text="\n".join(parts), sub_pages=[])
         _, root_html, _, _ = fetched
+        root_text = root_text or _extract_best_text(root_html)
 
     sub_links = _discover_subpolicy_links(root_html, root_policy_url, root_policy_url, visited)
 
@@ -769,9 +910,25 @@ async def fetch_policy_tree(
         accepted = await _accept_candidate_with_fallback(client, sub_url)
         if not accepted:
             continue
+
         accepted_url, _sub_html, extracted_text = accepted
         if not extracted_text.strip():
             continue
+
+        family_key = _policy_family_key(accepted_url)
+        if family_key in seen_policy_families:
+            continue
+
+        if _is_alternate_language_copy(
+            candidate_url=accepted_url,
+            label=label,
+            candidate_text=extracted_text,
+            root_url=root_policy_url,
+            root_text=root_text or "",
+        ):
+            continue
+
+        seen_policy_families.add(family_key)
         sub_pages.append((accepted_url, label))
         parts.append(f"\n\n=== SUB-POLICY: {label} ({accepted_url}) ===\n{extracted_text}")
 
@@ -794,9 +951,16 @@ async def crawl_website(url: str) -> CrawlResult:
         follow_redirects=True,
     ) as client:
 
-        homepage = await _fetch(client, url)
+        # Always begin discovery from the site root/homepage, even if the user
+        # provides a deep product/category/article URL.
+        homepage = await _fetch(client, base)
         if homepage:
             _, result.homepage_html, result.homepage_cookies, _ = homepage
+        else:
+            # fallback: if the root cannot be fetched, use the original URL
+            homepage = await _fetch(client, url)
+            if homepage:
+                _, result.homepage_html, result.homepage_cookies, _ = homepage
 
         privacy_url: Optional[str] = None
         accepted_html: Optional[str] = None
@@ -836,9 +1000,14 @@ async def crawl_website(url: str) -> CrawlResult:
             result.policy_url = privacy_url
             result.policy_html = accepted_html or ""
             result.policy_found = True
-            # IMPORTANT: use only the accepted root policy text.
-            # Do not stitch alternate language copies or sub-policies into one blob.
-            result.policy_text = extracted_text or ""
+
+            tree = await fetch_policy_tree(
+                client,
+                privacy_url,
+                root_html=accepted_html,
+                root_text=extracted_text or "",
+            )
+            result.policy_text = tree.stitched_text if tree.stitched_text.strip() else (extracted_text or "")
             result.word_count = len(result.policy_text.split()) if result.policy_text else 0
         else:
             result.error = "Privacy policy not found via link scan, canonical paths, or sitemap."
