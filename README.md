@@ -4,7 +4,7 @@ A comprehensive privacy analysis tool that generates FDA nutrition label–style
 
 ## Features
 
-- **Privacy Policy Crawler** – Auto-discovers `/privacy`, `/privacy-policy`, `/legal` paths
+- **Privacy Policy Crawler** – Auto-discovers policies via homepage links, known policy URLs, Brave Search fallback, canonical paths, and sitemaps
 - **Data Category Detection** – 20+ categories including all GDPR Art. 9 special categories
 - **Third-Party Analysis** – Identifies and rates 50+ known third parties
 - **Tracker Detection** – Real-time detection of 80+ known trackers, pixels, iframes
@@ -37,6 +37,17 @@ pip install -r requirements.txt
 playwright install chromium
 uvicorn main:app --reload --port 8000
 ```
+
+Optional search-backed discovery:
+
+- Set `BRAVE_SEARCH_API_KEY` to use Brave Search after known URLs and before homepage/path/sitemap fallback.
+- Optional localization: `SEARCH_COUNTRY=US`, `SEARCH_LANG=en`.
+- Optional policy fetch language: `CRAWLER_ACCEPT_LANGUAGE=en-US,en;q=0.9,tr-TR;q=0.7,tr;q=0.6`.
+- Optional known URL bypass: `SKIP_KNOWN_POLICY_URLS=true` skips the hardcoded policy URL map for testing normal discovery.
+- Optional AI search reranking: `ENABLE_AI_SEARCH_RERANK=true` uses Claude to choose the official privacy URL from Brave results when `ANTHROPIC_API_KEY` is set.
+- Optional reader fallback: `ENABLE_READER_FALLBACK=true` lets JS/app-shell policy pages be read through a text reader after direct extraction fails.
+- Optional heavier browser crawl: `ENABLE_DYNAMIC_CRAWL=true`. It is disabled by default so `/analyze` returns quickly.
+- Without a Brave key, the crawler still uses known policy URLs, homepage links, canonical paths, Playwright rendering fallback, reader fallback, and sitemaps.
 
 ## Stateful Batch Crawl (S0/S1/S2 + Human-in-the-loop)
 

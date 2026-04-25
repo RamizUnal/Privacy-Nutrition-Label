@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { AnalysisResult, DomainHistory, PolicyAIAnalysis, EcosystemMap, ChatMessage } from './types';
 
-const API = axios.create({ baseURL: '/api' });
+const API = axios.create({ baseURL: '/api', timeout: 90000 });
 
 export async function analyzeWebsite(url: string, forceRefresh = false): Promise<AnalysisResult> {
   const { data } = await API.post('/analyze', { url, force_refresh: forceRefresh });

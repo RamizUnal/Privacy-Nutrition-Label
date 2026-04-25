@@ -2,7 +2,9 @@
 Privacy Nutrition Label Generator – FastAPI Backend
 """
 from __future__ import annotations
+import asyncio
 import dataclasses
+import os
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -34,7 +36,6 @@ from scoring.privacy_scorer import calculate_score
 from ai.policy_ai import analyze_policy_ai, stream_chat_response
 from ai.third_party_researcher import research_ecosystem
 from ai.claude_client import is_available as ai_available
-from tracker.dynamic_crawler import run_3_state_crawl
 from analyzer.mismatch_analyzer import analyze_mismatches
 
 
@@ -153,7 +154,9 @@ async def analyze_website(
 
     # ── Crawl ─────────────────────────────────────────────────────────────────
     try:
-        crawl = await crawl_website(req.url)
+        crawl = await asyncio.wait_for(crawl_website(req.url), timeout=60.0)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Crawl timed out while looking for the privacy policy.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Crawl failed: {str(e)}")
 
@@ -171,10 +174,17 @@ async def analyze_website(
 
     # ── Dynamic Crawl (Playwright) ───────────────────────────────────────────
     dynamic_result = None
-    try:
-        dynamic_result = await run_3_state_crawl(domain, req.url)
-    except Exception as e:
-        print(f"Dynamic crawl failed: {e}")
+    if os.getenv("ENABLE_DYNAMIC_CRAWL", "").lower() in {"1", "true", "yes"}:
+        try:
+            from tracker.dynamic_crawler import run_3_state_crawl
+            dynamic_result = await asyncio.wait_for(
+                run_3_state_crawl(domain, req.url),
+                timeout=45.0,
+            )
+        except asyncio.TimeoutError:
+            print(f"Dynamic crawl timed out for {domain}")
+        except Exception as e:
+            print(f"Dynamic crawl failed: {e}")
 
     # ── Policy analysis ────────────────────────────────────────────────────────
     policy_text = crawl.policy_text or ""

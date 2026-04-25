@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 import asyncio
 import re
-from typing import Dict, List, Set, Any
+from typing import TYPE_CHECKING, Dict, List, Set, Any
 from urllib.parse import urlparse
 
-from playwright.async_api import async_playwright, Page, BrowserContext
-
 from tracker.detector import _extract_domain, _match_tracker, _categorize_cookie, CookieInfo
+
+if TYPE_CHECKING:
+    from playwright.async_api import Page, BrowserContext
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Heuristics for Banners
@@ -174,22 +177,23 @@ async def collect_state(browser, url: str, domain: str, state_type: str) -> Dyna
 
 async def run_3_state_crawl(domain: str, url: str) -> Dict[str, Any]:
     """Execute the full 3-state crawl returning comprehensive data."""
-    
+    from playwright.async_api import async_playwright
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        
-        # Run sequentially to ensure isolated states
-        print(f"Running S0 (Baseline) for {domain}...")
-        s0_result = await collect_state(browser, url, domain, "S0_BASELINE")
-        
-        print(f"Running S1 (Reject) for {domain}...")
-        s1_result = await collect_state(browser, url, domain, "S1_REJECT")
-        
-        print(f"Running S2 (Accept) for {domain}...")
-        s2_result = await collect_state(browser, url, domain, "S2_ACCEPT")
-        
-        await browser.close()
-        
+        try:
+            # Run sequentially to ensure isolated states
+            print(f"Running S0 (Baseline) for {domain}...")
+            s0_result = await collect_state(browser, url, domain, "S0_BASELINE")
+
+            print(f"Running S1 (Reject) for {domain}...")
+            s1_result = await collect_state(browser, url, domain, "S1_REJECT")
+
+            print(f"Running S2 (Accept) for {domain}...")
+            s2_result = await collect_state(browser, url, domain, "S2_ACCEPT")
+        finally:
+            await browser.close()
+
     return {
         "S0": s0_result.to_dict(),
         "S1": s1_result.to_dict(),

@@ -26,13 +26,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, List, Optional, Set, Tuple
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, parse_qsl, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+
+try:
+    from ai.claude_client import FAST_MODEL, acomplete
+except Exception:
+    FAST_MODEL = ""
+    acomplete = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -42,9 +51,13 @@ from bs4 import BeautifulSoup
 PRIVACY_PATHS = [
     # English
     "/privacy",
+    "/privacy/policy",
+    "/privacy/policy/",
     "/privacy-policy",
     "/privacy_policy",
     "/privacypolicy",
+    "/privacy/center",
+    "/privacy_center",
     "/legal/privacy",
     "/legal/privacy-policy",
     "/policies/privacy",
@@ -134,6 +147,55 @@ PRIVACY_URL_SIGNALS = [
     "datenschutz", "confidentialit", "privacidad",
 ]
 
+KNOWN_POLICY_URLS = {
+    "amazon.com": [
+        "https://www.amazon.com/-/en/gp/help/customer/display.html?nodeId=GX7NJQ4ZB8MHFRNJ",
+        "https://www.amazon.com/gp/help/customer/display.html?nodeId=201909010",
+        "https://www.amazon.com/gp/help/customer/display.html?nodeId=GX7NJQ4ZB8MHFRNJ",
+    ],
+    "anthropic.com": "https://www.anthropic.com/legal/privacy",
+    "apple.com": "https://www.apple.com/legal/privacy/en-ww/",
+    "cloudflare.com": "https://www.cloudflare.com/privacypolicy/",
+    "discord.com": "https://discord.com/privacy",
+    "duckduckgo.com": "https://duckduckgo.com/privacy",
+    "ebay.com": "https://www.ebay.com/help/policies/member-behaviour-policies/user-privacy-notice-privacy-policy",
+    "epicgames.com": "https://www.epicgames.com/site/en-US/privacypolicy",
+    "facebook.com": "https://mbasic.facebook.com/privacy/policy/?locale=en_US",
+    "fb.com": "https://mbasic.facebook.com/privacy/policy/?locale=en_US",
+    "fortnite.com": "https://www.epicgames.com/site/en-US/privacypolicy",
+    "github.com": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+    "google.com": "https://policies.google.com/privacy?hl=en",
+    "instagram.com": "https://mbasic.facebook.com/privacy/policy/?locale=en_US",
+    "linkedin.com": "https://www.linkedin.com/legal/privacy-policy",
+    "microsoft.com": "https://privacy.microsoft.com/en-us/privacystatement",
+    "mozilla.org": "https://www.mozilla.org/en-US/privacy/firefox/",
+    "netflix.com": "https://help.netflix.com/legal/privacy",
+    "openai.com": "https://openai.com/policies/row-privacy-policy/",
+    "paypal.com": "https://www.paypal.com/us/legalhub/privacy-full",
+    "pinterest.com": "https://policy.pinterest.com/en/privacy-policy",
+    "reddit.com": "https://www.reddit.com/policies/privacy-policy",
+    "roblox.com": "https://en.help.roblox.com/hc/en-us/articles/115004630823-Roblox-Privacy-and-Cookie-Policy",
+    "rockstargames.com": "https://www.rockstargames.com/privacy",
+    "snap.com": "https://snap.com/en-US/privacy/privacy-policy",
+    "snapchat.com": "https://snap.com/en-US/privacy/privacy-policy",
+    "spotify.com": "https://www.spotify.com/us/legal/privacy-policy/",
+    "steam.com": "https://store.steampowered.com/privacy_agreement/",
+    "steampowered.com": "https://store.steampowered.com/privacy_agreement/",
+    "stripe.com": "https://stripe.com/privacy",
+    "tiktok.com": "https://www.tiktok.com/legal/page/row/privacy-policy/en",
+    "twitch.tv": "https://www.twitch.tv/p/legal/privacy-notice/",
+    "twitter.com": "https://x.com/en/privacy",
+    "whatsapp.com": "https://www.whatsapp.com/legal/privacy-policy",
+    "x.com": "https://x.com/en/privacy",
+    "yahoo.com": "https://legal.yahoo.com/us/en/yahoo/privacy/index.htm",
+    "youtube.com": "https://policies.google.com/privacy?hl=en",
+    "zoom.us": "https://zoom.us/privacy",
+}
+
+DOMAIN_ALIASES = {
+    "rockstar.com": "rockstargames.com",
+}
+
 NON_PRIVACY_LEGAL_SIGNALS = [
     "end-user-agreement",
     "end user agreement",
@@ -168,14 +230,27 @@ BROWSER_HEADERS = {
         "Chrome/123.0.0.0 Safari/537.36"
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "tr,tr-TR;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Language": os.getenv(
+        "CRAWLER_ACCEPT_LANGUAGE",
+        "en-US,en;q=0.9,tr-TR;q=0.7,tr;q=0.6",
+    ),
     # intentionally omit `br` to avoid environments that cannot decode it cleanly
     "Accept-Encoding": "gzip, deflate",
     "Cache-Control": "no-cache",
     "DNT": "1",
 }
+FALLBACK_HEADERS = {
+    "User-Agent": "curl/8.4.0",
+    "Accept": "*/*",
+}
+READER_HEADERS = {
+    "Accept": "text/plain, text/markdown, */*",
+    "User-Agent": BROWSER_HEADERS["User-Agent"],
+}
 
 TIMEOUT = httpx.Timeout(20.0, connect=10.0)
+FETCH_TIMEOUT = httpx.Timeout(5.0, connect=2.0)
+RENDER_TIMEOUT_SECONDS = 6.0
 MAX_CONTENT_LENGTH = 3 * 1024 * 1024
 MAX_SUBPOLICY_FETCHES = 8
 
@@ -304,6 +379,42 @@ def _registrable_domain(host: str) -> str:
     return ".".join(parts[-2:])
 
 
+def _lookup_known_policies(domain: str) -> List[str]:
+    if _skip_known_policy_urls():
+        return []
+
+    host = (domain or "").lower().split(":", 1)[0]
+    if host.startswith("www."):
+        host = host[4:]
+    registrable = _registrable_domain(host)
+    aliased = DOMAIN_ALIASES.get(registrable, registrable)
+    value = (
+        KNOWN_POLICY_URLS.get(host)
+        or KNOWN_POLICY_URLS.get(registrable)
+        or KNOWN_POLICY_URLS.get(aliased)
+    )
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [value]
+    return [url for url in value if isinstance(url, str)]
+
+
+def _lookup_known_policy(domain: str) -> Optional[str]:
+    known_urls = _lookup_known_policies(domain)
+    return known_urls[0] if known_urls else None
+
+
+def _skip_known_policy_urls() -> bool:
+    load_dotenv(Path(__file__).parent / ".env", override=True)
+    return os.getenv("SKIP_KNOWN_POLICY_URLS", "").lower() in {"1", "true", "yes"}
+
+
+def _canonical_search_domain(domain: str) -> str:
+    registrable = _registrable_domain(domain)
+    return DOMAIN_ALIASES.get(registrable, registrable)
+
+
 def _same_registered_domain(a: str, b: str) -> bool:
     return _registrable_domain(urlparse(a).netloc) == _registrable_domain(urlparse(b).netloc)
 
@@ -413,20 +524,136 @@ async def _fetch(
     """
     Returns (final_url, text, set_cookie_headers, content_type)
     """
+    for headers in (BROWSER_HEADERS, FALLBACK_HEADERS):
+        try:
+            resp = await client.get(
+                url,
+                follow_redirects=True,
+                headers=headers,
+                timeout=FETCH_TIMEOUT,
+            )
+            if resp.status_code == 200:
+                ct = (resp.headers.get("content-type") or "").lower()
+                # Keep html/xhtml/xml/text-ish pages. Many privacy pages are weirdly typed.
+                if not any(x in ct for x in ("html", "xml", "text", "json")):
+                    return None
+                solved = await _solve_simple_js_challenge(client, resp, headers)
+                if solved:
+                    return solved
+                text = resp.text
+                if len(text.encode("utf-8", errors="ignore")) > MAX_CONTENT_LENGTH:
+                    text = text[:MAX_CONTENT_LENGTH]
+                return str(resp.url), text, resp.headers.get_list("set-cookie"), ct
+            if 400 <= resp.status_code < 500:
+                continue
+            return None
+        except Exception:
+            continue
+    return None
+
+
+async def _solve_simple_js_challenge(
+    client: httpx.AsyncClient,
+    resp: httpx.Response,
+    headers: dict,
+) -> Optional[Tuple[str, str, List[str], str]]:
+    """
+    Some policy pages, notably Reddit, return a tiny no-cookie JS challenge
+    before serving the actual legal text. Solve only the simple hidden-form
+    shape we can prove from the response, then continue with normal validation.
+    """
+    html = resp.text or ""
+    if "js_challenge" not in html or 'name="solution"' not in html:
+        return None
+
+    seed_match = re.search(r'\(async\s+e\s*=>\s*e\s*\+\s*e\)\("([^"]+)"\)', html)
+    if not seed_match:
+        return None
+
+    soup = BeautifulSoup(html, "lxml")
+    form = soup.find("form")
+    if not form:
+        return None
+
+    params: List[Tuple[str, str]] = []
+    for inp in form.find_all("input"):
+        name = inp.get("name")
+        if not name:
+            continue
+        value = inp.get("value") or ""
+        if name == "solution":
+            value = seed_match.group(1) * 2
+        params.append((name, value))
+
+    for name, value in parse_qsl(urlparse(str(resp.url)).query, keep_blank_values=True):
+        params.append((name, value))
+
+    action = urljoin(str(resp.url), form.get("action") or str(resp.url))
     try:
-        resp = await client.get(url, follow_redirects=True, headers=BROWSER_HEADERS)
-        if resp.status_code != 200:
-            return None
-        ct = (resp.headers.get("content-type") or "").lower()
-        # Keep html/xhtml/xml/text-ish pages. Many privacy pages are weirdly typed.
-        if not any(x in ct for x in ("html", "xml", "text", "json")):
-            return None
-        text = resp.text
-        if len(text.encode("utf-8", errors="ignore")) > MAX_CONTENT_LENGTH:
-            text = text[:MAX_CONTENT_LENGTH]
-        return str(resp.url), text, resp.headers.get_list("set-cookie"), ct
+        solved = await client.get(
+            action,
+            params=params,
+            follow_redirects=True,
+            headers=headers,
+            timeout=FETCH_TIMEOUT,
+        )
     except Exception:
         return None
+
+    if solved.status_code != 200:
+        return None
+
+    ct = (solved.headers.get("content-type") or "").lower()
+    if not any(x in ct for x in ("html", "xml", "text", "json")):
+        return None
+
+    text = solved.text
+    if "js_challenge" in text and 'name="solution"' in text:
+        return None
+    if len(text.encode("utf-8", errors="ignore")) > MAX_CONTENT_LENGTH:
+        text = text[:MAX_CONTENT_LENGTH]
+    return str(solved.url), text, solved.headers.get_list("set-cookie"), ct
+
+
+async def _fetch_reader_text(
+    client: httpx.AsyncClient,
+    url: str,
+) -> Optional[str]:
+    if os.getenv("ENABLE_READER_FALLBACK", "true").lower() not in {"1", "true", "yes"}:
+        return None
+
+    try:
+        resp = await client.get(
+            "https://r.jina.ai/" + url,
+            follow_redirects=True,
+            headers=READER_HEADERS,
+            timeout=httpx.Timeout(20.0, connect=5.0),
+        )
+    except Exception:
+        return None
+
+    if resp.status_code != 200:
+        return None
+
+    text = _clean_reader_text(resp.text or "")
+    lower = text.lower()
+    if not text or len(text.split()) < 120:
+        return None
+    if "securitycompromiseerror" in lower or '"code":451' in lower:
+        return None
+    if "privacy" not in lower and "personal data" not in lower and "personal information" not in lower:
+        return None
+    return text
+
+
+def _clean_reader_text(text: str) -> str:
+    cleaned = _clean_lines(text)
+    lines = []
+    for line in cleaned.splitlines():
+        if re.match(r"^(Title|URL Source|Published Time|Markdown Content):", line):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
 
 
 async def _render_with_playwright(url: str) -> Optional[Tuple[str, str]]:
@@ -439,19 +666,24 @@ async def _render_with_playwright(url: str) -> Optional[Tuple[str, str]]:
     except Exception:
         return None
 
-    try:
+    async def _render() -> Optional[Tuple[str, str]]:
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=True)
-            page = await browser.new_page(locale="tr-TR")
-            await page.goto(url, wait_until="domcontentloaded", timeout=20000)
             try:
-                await page.wait_for_load_state("networkidle", timeout=8000)
-            except Exception:
-                pass
-            html = await page.content()
-            final_url = page.url
-            await browser.close()
-            return final_url, html
+                page = await browser.new_page(locale="en-US")
+                await page.goto(url, wait_until="domcontentloaded", timeout=8000)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=3000)
+                except Exception:
+                    pass
+                html = await page.content()
+                final_url = page.url
+                return final_url, html
+            finally:
+                await browser.close()
+
+    try:
+        return await asyncio.wait_for(_render(), timeout=RENDER_TIMEOUT_SECONDS)
     except Exception:
         return None
 
@@ -476,17 +708,23 @@ def _extract_text_from_html(html: str) -> str:
     for tag in soup(["script", "style", "svg", "canvas", "iframe"]):
         tag.decompose()
 
-    main = (
-        soup.find("main")
-        or soup.find("article")
-        or soup.find(attrs={"role": "main"})
-        or soup.find(id=re.compile(r"privacy|policy|gizlilik|kvkk|content|main", re.I))
-        or soup.find(class_=re.compile(r"privacy|policy|gizlilik|kvkk|content|main|article", re.I))
-        or soup.body
-        or soup
-    )
-    raw = main.get_text(separator="\n", strip=True)
-    return _clean_lines(raw)
+    candidates = [
+        soup.find("main"),
+        soup.find("article"),
+        soup.find(attrs={"role": "main"}),
+        soup.find(id=re.compile(r"privacy|policy|gizlilik|kvkk|content|main", re.I)),
+        soup.find(class_=re.compile(r"privacy|policy|gizlilik|kvkk|content|main|article", re.I)),
+        soup.body,
+        soup,
+    ]
+    texts = [
+        _clean_lines(node.get_text(separator="\n", strip=True))
+        for node in candidates
+        if node is not None
+    ]
+    if not texts:
+        return ""
+    return max(texts, key=lambda text: len(text.split()))
 
 
 def _walk_json_for_text(obj: Any, depth: int = 0) -> str:
@@ -577,6 +815,24 @@ def _looks_like_gibberish(text: str) -> bool:
     printable = sum(1 for ch in sample if ch.isprintable() or ch in "\n\r\t")
     ratio = printable / max(len(sample), 1)
     return ratio < 0.85
+
+
+def _looks_like_resource_dump(text: str) -> bool:
+    if not text:
+        return True
+    words = text.split()
+    if len(words) < 50:
+        return False
+    url_like = sum(
+        1
+        for word in words
+        if word.startswith(("http://", "https://", "/ajax/"))
+        or "static." in word
+        or ".webp" in word
+        or ".js" in word
+    )
+    policy_signals = _privacy_signal_count(text)
+    return url_like / max(len(words), 1) > 0.25 and policy_signals < 4
 
 
 def _looks_like_stub_privacy_page(text: str, url: str) -> bool:
@@ -681,6 +937,8 @@ async def _smart_validate(url: str, html: str, original_url: Optional[str] = Non
         return False, best_text
     if _looks_like_gibberish(best_text):
         return False, ""
+    if _looks_like_resource_dump(best_text):
+        return False, ""
     if _looks_like_stub_privacy_page(best_text, url):
         return False, best_text
 
@@ -748,6 +1006,345 @@ async def _find_privacy_link_in_html(html: str, base: str) -> Optional[str]:
 
     scored.sort(key=lambda x: (-x[0], len(x[1])))
     return scored[0][1]
+
+
+def _unwrap_search_result_url(href: str) -> Optional[str]:
+    href = (href or "").strip()
+    if not href:
+        return None
+    if href.startswith("//"):
+        href = "https:" + href
+    elif href.startswith("/"):
+        href = urljoin("https://search.brave.com", href)
+
+    parsed = urlparse(href)
+    qs = parse_qs(parsed.query)
+    for key in ("url", "u", "uddg"):
+        values = qs.get(key)
+        if values and values[0].startswith(("http://", "https://")):
+            href = values[0]
+            break
+
+    return href if href.startswith(("http://", "https://")) else None
+
+
+def _search_result_mentions_privacy(url: str, title: str = "", snippet: str = "") -> bool:
+    if _url_has_privacy_signal(url):
+        return True
+
+    haystack = f"{title}\n{snippet}".lower()
+    return any(re.search(pattern, haystack, re.I) for pattern in PRIVACY_LINK_PATTERNS)
+
+
+def _is_off_target_search_subdomain(url: str, domain: str) -> bool:
+    host = urlparse(url).netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+
+    # The consumer Amazon policy lives on www.amazon.com. When maps are skipped,
+    # Brave often ranks AWS/Amazon Ads policies above the consumer policy.
+    if domain == "amazon.com":
+        off_target_hosts = {
+            "aws.amazon.com",
+            "advertising.amazon.com",
+            "sellercentral.amazon.com",
+            "developer.amazon.com",
+            "affiliate-program.amazon.com",
+        }
+        return host in off_target_hosts
+
+    return False
+
+
+def _score_search_result(url: str, title: str, snippet: str, domain: str) -> int:
+    if _url_is_non_privacy_legal(url) or _url_is_interstitial(url):
+        return -100
+    if _looks_like_product_or_listing_url(url):
+        return -100
+    if not _search_result_mentions_privacy(url, title, snippet):
+        return -100
+
+    score = 0
+    blob = f"{url}\n{title}\n{snippet}".lower()
+    domain = _canonical_search_domain(domain)
+    domain_stem = domain.split(".", 1)[0]
+    target_url = "https://" + domain
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    same_domain = _same_registered_domain(url, target_url)
+
+    if _is_off_target_search_subdomain(url, domain):
+        return -100
+
+    noisy_result_signals = [
+        "devforum.", "forum.", "forums.", "community.", "discourse.",
+        "/forum", "/forums", "/community", "/questions", "/answers", "/t/",
+        "/interactive/", "/opinion/", "/article/", "/articles/", "/news/",
+        "/wirecutter/", "/reviews/", "/video/", "/live/",
+        "broken", "hyperlink", "not working", "bug report",
+        "changes to the privacy notice", "changes to our privacy notice",
+        "privacy notice changes", "privacy policy changes",
+        "previous privacy", "prior privacy", "archived privacy",
+    ]
+    if any(sig in host or sig in path or sig in blob for sig in noisy_result_signals):
+        return -100
+    if re.search(r"/20\d{2}/", path):
+        return -100
+    if "terms" in path and not _url_has_privacy_signal(path):
+        return -100
+
+    if not same_domain:
+        return -100
+    if same_domain:
+        score += 10
+    if host == domain or host == f"www.{domain}":
+        score += 4
+    if _url_has_privacy_signal(url):
+        score += 8
+    if "privacy policy" in blob or "privacy notice" in blob or "gizlilik politikas" in blob:
+        score += 5
+    if "privacy policy" in title.lower():
+        score += 6
+    if "kvkk" in blob or "datenschutz" in blob or "privacidad" in blob:
+        score += 3
+    if "cookie" in blob or "cookies" in blob or "cerez" in blob or "çerez" in blob:
+        score += 1
+
+    return score
+
+
+def _pick_search_candidates(
+    rows: List[Tuple[str, str, str]],
+    domain: str,
+    limit: int = 5,
+) -> List[str]:
+    scored: List[Tuple[int, str]] = []
+    seen: Set[str] = set()
+
+    for raw_url, title, snippet in rows:
+        url = _unwrap_search_result_url(raw_url)
+        if not url or url in seen:
+            continue
+        seen.add(url)
+
+        score = _score_search_result(url, title, snippet, domain)
+        if score > 0:
+            scored.append((score, url))
+
+    scored.sort(key=lambda x: (-x[0], len(x[1])))
+    return [url for _, url in scored[:limit]]
+
+
+def _extract_json_array(text: str) -> Optional[List[str]]:
+    text = (text or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        match = re.search(r"\[[\s\S]*\]", text)
+        if not match:
+            return None
+        try:
+            parsed = json.loads(match.group(0))
+        except Exception:
+            return None
+    if not isinstance(parsed, list):
+        return None
+    return [x for x in parsed if isinstance(x, str)]
+
+
+async def _ai_pick_search_candidates(
+    rows: List[Tuple[str, str, str]],
+    domain: str,
+    limit: int = 3,
+) -> List[str]:
+    if not acomplete:
+        return []
+    if os.getenv("ENABLE_AI_SEARCH_RERANK", "true").lower() not in {"1", "true", "yes"}:
+        return []
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        return []
+
+    normalized_rows = []
+    seen: Set[str] = set()
+    for raw_url, title, snippet in rows[:10]:
+        url = _unwrap_search_result_url(raw_url)
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        normalized_rows.append((url, title.strip(), snippet.strip()))
+
+    if not normalized_rows:
+        return []
+
+    results_text = "\n".join(
+        f"{i}. URL: {url}\n   TITLE: {title}\n   SNIPPET: {snippet}"
+        for i, (url, title, snippet) in enumerate(normalized_rows, start=1)
+    )
+    prompt = f"""
+Target website/domain: {domain}
+
+Brave Search results:
+{results_text}
+
+Return a JSON array of up to {limit} URLs that are the official privacy policy,
+privacy notice, cookie policy, KVKK/GDPR privacy notice, or official parent-company
+privacy policy for the target website.
+
+Rules:
+- Prefer official pages operated by the target site, its parent company, or its help/legal center.
+- Reject articles, news, opinion pieces, forum posts, bug reports, terms-only pages,
+  card/payment terms, docs about someone else's privacy policy, and random third-party mirrors.
+- If none are official privacy/cookie policy pages for the target, return [].
+- Output only JSON, no prose.
+""".strip()
+
+    try:
+        raw = await asyncio.wait_for(
+            acomplete(
+                prompt,
+                system="You select official privacy policy URLs from search results. Return only JSON.",
+                model=FAST_MODEL,
+                max_tokens=180,
+            ),
+            timeout=8.0,
+        )
+    except Exception:
+        return []
+
+    picked = _extract_json_array(raw or "")
+    if not picked:
+        return []
+
+    allowed = {url for url, _, _ in normalized_rows}
+    candidates: List[str] = []
+    for url in picked:
+        unwrapped = _unwrap_search_result_url(url)
+        if unwrapped in allowed and unwrapped not in candidates:
+            candidates.append(unwrapped)
+    return candidates[:limit]
+
+
+async def _brave_search_query(
+    client: httpx.AsyncClient,
+    query: str,
+    domain: str,
+) -> List[str]:
+    api_key = os.getenv("BRAVE_SEARCH_API_KEY")
+    if not api_key:
+        return []
+
+    try:
+        resp = await client.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            params={
+                "q": query,
+                "count": 10,
+                "country": os.getenv("SEARCH_COUNTRY", "US"),
+                "search_lang": os.getenv("SEARCH_LANG", "en"),
+            },
+            headers={
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip",
+                "X-Subscription-Token": api_key,
+            },
+            timeout=httpx.Timeout(10.0, connect=5.0),
+        )
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+    except Exception:
+        return []
+
+    rows = [
+        (
+            item.get("url", ""),
+            item.get("title", ""),
+            item.get("description", ""),
+        )
+        for item in data.get("web", {}).get("results", [])[:10]
+    ]
+    ai_candidates = await _ai_pick_search_candidates(rows, domain)
+    if ai_candidates:
+        return ai_candidates
+    return _pick_search_candidates(rows, domain)
+
+
+async def debug_brave_search_candidates(client: httpx.AsyncClient, domain: str) -> dict:
+    domain = _canonical_search_domain(domain)
+    query = f"{domain} privacy policy"
+    api_key = os.getenv("BRAVE_SEARCH_API_KEY")
+    if not api_key:
+        return {"query": query, "ai_candidates": [], "heuristic_candidates": [], "raw_results": []}
+
+    try:
+        resp = await client.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            params={
+                "q": query,
+                "count": 10,
+                "country": os.getenv("SEARCH_COUNTRY", "US"),
+                "search_lang": os.getenv("SEARCH_LANG", "en"),
+            },
+            headers={
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip",
+                "X-Subscription-Token": api_key,
+            },
+            timeout=httpx.Timeout(10.0, connect=5.0),
+        )
+        data = resp.json() if resp.status_code == 200 else {}
+    except Exception:
+        data = {}
+
+    rows = [
+        (
+            item.get("url", ""),
+            item.get("title", ""),
+            item.get("description", ""),
+        )
+        for item in data.get("web", {}).get("results", [])[:10]
+    ]
+    return {
+        "query": query,
+        "ai_candidates": await _ai_pick_search_candidates(rows, domain),
+        "heuristic_candidates": _pick_search_candidates(rows, domain),
+        "raw_results": [
+            {"url": url, "title": title, "description": snippet}
+            for url, title, snippet in rows
+        ],
+    }
+
+
+async def _find_via_brave_search(client: httpx.AsyncClient, domain: str) -> List[str]:
+    """
+    Use Brave Search as an optional production search layer.
+
+    We return candidates, not answers: each URL still goes through the normal
+    fetch, extraction, Playwright fallback, and privacy-policy validation.
+    """
+    if not os.getenv("BRAVE_SEARCH_API_KEY"):
+        return []
+
+    domain = _canonical_search_domain(domain)
+    queries = [
+        f"{domain} privacy policy",
+        f"site:{domain} privacy policy OR privacy notice OR gizlilik OR KVKK OR datenschutz",
+    ]
+
+    candidates: List[str] = []
+    seen: Set[str] = set()
+    for query in queries:
+        for url in await _brave_search_query(client, query, domain):
+            if url not in seen:
+                seen.add(url)
+                candidates.append(url)
+        if candidates:
+            break
+
+    return candidates[:5]
 
 
 async def _scan_sitemap_for_privacy(client: httpx.AsyncClient, sitemap_url: str, depth: int = 0) -> Optional[str]:
@@ -833,24 +1430,45 @@ def _discover_subpolicy_links(html: str, current_url: str, root_url: str, visite
 async def _accept_candidate_with_fallback(
     client: httpx.AsyncClient,
     requested_url: str,
+    *,
+    render_on_fetch_fail: bool = False,
+    allow_reader_fallback: bool = False,
 ) -> Optional[Tuple[str, str, str]]:
     """
     Returns (accepted_url, final_html, extracted_text) if a candidate is accepted.
     """
     static = await _fetch(client, requested_url)
     if not static:
+        if render_on_fetch_fail and _url_has_privacy_signal(requested_url):
+            rendered = await _render_with_playwright(requested_url)
+            if rendered:
+                dyn_final_url, dyn_html = rendered
+                dyn_valid, dyn_text = await _smart_validate(
+                    dyn_final_url,
+                    dyn_html,
+                    original_url=requested_url,
+                )
+                if dyn_valid:
+                    accepted = (
+                        requested_url
+                        if dyn_final_url != requested_url and _url_has_privacy_signal(requested_url)
+                        else dyn_final_url
+                    )
+                    return accepted, dyn_html, dyn_text
+        if allow_reader_fallback or _url_has_privacy_signal(requested_url):
+            reader_text = await _fetch_reader_text(client, requested_url)
+            if reader_text:
+                reader_valid, reader_extracted = await _smart_validate(
+                    requested_url,
+                    reader_text,
+                    original_url=requested_url,
+                )
+                if reader_valid:
+                    return requested_url, "", reader_extracted
         return None
 
     final_url, html, _, _ = static
     valid, text = await _smart_validate(final_url, html, original_url=requested_url)
-
-    print("TRY CANDIDATE")
-    print("  requested :", requested_url)
-    print("  final_url :", final_url)
-    print("  valid     :", valid)
-    print("  words     :", len((text or "").split()))
-    print("  signals   :", _privacy_signal_count(text or ""))
-    print("  path      :", _normalized_path(final_url))
 
     if valid:
         accepted = requested_url if (final_url != requested_url and _url_has_privacy_signal(requested_url)) else final_url
@@ -865,17 +1483,26 @@ async def _accept_candidate_with_fallback(
             dyn_final_url, dyn_html = rendered
             dyn_valid, dyn_text = await _smart_validate(dyn_final_url, dyn_html, original_url=requested_url)
 
-            print("TRY CANDIDATE (dynamic)")
-            print("  requested :", requested_url)
-            print("  final_url :", dyn_final_url)
-            print("  valid     :", dyn_valid)
-            print("  words     :", len((dyn_text or "").split()))
-            print("  signals   :", _privacy_signal_count(dyn_text or ""))
-            print("  path      :", _normalized_path(dyn_final_url))
-
             if dyn_valid:
                 accepted = requested_url if (dyn_final_url != requested_url and _url_has_privacy_signal(requested_url)) else dyn_final_url
                 return accepted, dyn_html, dyn_text
+
+    reader_target = final_url if _url_has_privacy_signal(final_url) else requested_url
+    if allow_reader_fallback or _url_has_privacy_signal(reader_target):
+        reader_text = await _fetch_reader_text(client, reader_target)
+        if reader_text:
+            reader_valid, reader_extracted = await _smart_validate(
+                reader_target,
+                reader_text,
+                original_url=requested_url,
+            )
+            if reader_valid:
+                accepted = (
+                    requested_url
+                    if reader_target != requested_url and _url_has_privacy_signal(requested_url)
+                    else reader_target
+                )
+                return accepted, "", reader_extracted
 
     return None
 
@@ -943,6 +1570,7 @@ async def crawl_website(url: str) -> CrawlResult:
     result = CrawlResult()
     url = normalize_url(url)
     base = base_url(url)
+    domain = extract_domain(base)
 
     async with httpx.AsyncClient(
         timeout=TIMEOUT,
@@ -951,32 +1579,81 @@ async def crawl_website(url: str) -> CrawlResult:
         follow_redirects=True,
     ) as client:
 
-        # Always begin discovery from the site root/homepage, even if the user
-        # provides a deep product/category/article URL.
-        homepage = await _fetch(client, base)
-        if homepage:
-            _, result.homepage_html, result.homepage_cookies, _ = homepage
-        else:
-            # fallback: if the root cannot be fetched, use the original URL
-            homepage = await _fetch(client, url)
-            if homepage:
-                _, result.homepage_html, result.homepage_cookies, _ = homepage
-
         privacy_url: Optional[str] = None
         accepted_html: Optional[str] = None
         extracted_text: Optional[str] = None
+        brave_attempted = False
+        known_urls = _lookup_known_policies(domain)
+        known_attempted = False
 
-        # 1) Homepage link discovery
-        if result.homepage_html:
+        # 1) Known policy URL shortcuts for large sites with non-obvious paths.
+        # This avoids Brave returning random third-party docs for famous sites.
+        if known_urls:
+            known_attempted = True
+            for known_url in known_urls:
+                result.fetch_attempts.append(known_url)
+                accepted = await _accept_candidate_with_fallback(
+                    client,
+                    known_url,
+                )
+                if accepted:
+                    privacy_url, accepted_html, extracted_text = accepted
+                    result.discovery_method = "known_url"
+                    break
+
+        # 2) Brave Search for everything else: search "site + privacy policy",
+        # then use the top same-domain privacy-looking result.
+        if not privacy_url and not known_attempted:
+            for candidate in await _find_via_brave_search(client, domain):
+                result.fetch_attempts.append(candidate)
+                accepted = await _accept_candidate_with_fallback(
+                    client,
+                    candidate,
+                    allow_reader_fallback=True,
+                )
+                if accepted:
+                    privacy_url, accepted_html, extracted_text = accepted
+                    result.discovery_method = "brave_search"
+                    brave_attempted = True
+                    break
+
+        # Fetch the homepage only when policy discovery still needs local
+        # links. This avoids slow/blocking homepages delaying known URL hits.
+        if not privacy_url and not known_attempted and not brave_attempted:
+            homepage = await _fetch(client, base)
+            if homepage:
+                _, result.homepage_html, result.homepage_cookies, _ = homepage
+            else:
+                parsed = urlparse(base)
+                if parsed.netloc and not parsed.netloc.startswith("www."):
+                    www_base = f"{parsed.scheme}://www.{parsed.netloc}"
+                    homepage = await _fetch(client, www_base)
+                    if homepage:
+                        base = www_base
+                        domain = extract_domain(base)
+                        _, result.homepage_html, result.homepage_cookies, _ = homepage
+
+                # fallback: if the root cannot be fetched, use the original URL
+                if not homepage:
+                    homepage = await _fetch(client, url)
+                    if homepage:
+                        _, result.homepage_html, result.homepage_cookies, _ = homepage
+
+        # 3) Homepage link discovery
+        if not privacy_url and result.homepage_html:
             link = await _find_privacy_link_in_html(result.homepage_html, base)
             if link:
-                accepted = await _accept_candidate_with_fallback(client, link)
+                accepted = await _accept_candidate_with_fallback(
+                    client,
+                    link,
+                    render_on_fetch_fail=True,
+                )
                 if accepted:
                     privacy_url, accepted_html, extracted_text = accepted
                     result.discovery_method = "link_scan"
 
-        # 2) Canonical path probing
-        if not privacy_url:
+        # 4) Canonical path probing
+        if not privacy_url and not known_attempted and not brave_attempted:
             for path in PRIVACY_PATHS:
                 candidate = base + path
                 result.fetch_attempts.append(candidate)
@@ -987,29 +1664,46 @@ async def crawl_website(url: str) -> CrawlResult:
                     break
                 await asyncio.sleep(0.1)
 
-        # 3) Sitemap discovery
-        if not privacy_url:
+        # 5) Sitemap discovery
+        if not privacy_url and not known_attempted and not brave_attempted:
             link = await _find_via_sitemap(client, base)
             if link:
-                accepted = await _accept_candidate_with_fallback(client, link)
+                accepted = await _accept_candidate_with_fallback(
+                    client,
+                    link,
+                    render_on_fetch_fail=True,
+                )
                 if accepted:
                     privacy_url, accepted_html, extracted_text = accepted
                     result.discovery_method = "sitemap"
+
+        # Curated known URLs are reliable enough to return as "found" even
+        # when a site blocks static fetching and Playwright is unavailable.
+        # The API will surface this as a found-but-unreadable policy instead
+        # of hanging or incorrectly saying no policy exists.
+        if not privacy_url and (known_attempted and known_urls):
+            privacy_url = known_urls[0]
+            accepted_html = ""
+            extracted_text = ""
+            result.discovery_method = "known_url"
 
         if privacy_url:
             result.policy_url = privacy_url
             result.policy_html = accepted_html or ""
             result.policy_found = True
 
-            tree = await fetch_policy_tree(
-                client,
-                privacy_url,
-                root_html=accepted_html,
-                root_text=extracted_text or "",
-            )
-            result.policy_text = tree.stitched_text if tree.stitched_text.strip() else (extracted_text or "")
+            if accepted_html or extracted_text:
+                tree = await fetch_policy_tree(
+                    client,
+                    privacy_url,
+                    root_html=accepted_html,
+                    root_text=extracted_text or "",
+                )
+                result.policy_text = tree.stitched_text if tree.stitched_text.strip() else (extracted_text or "")
+            else:
+                result.policy_text = ""
             result.word_count = len(result.policy_text.split()) if result.policy_text else 0
         else:
-            result.error = "Privacy policy not found via link scan, canonical paths, or sitemap."
+            result.error = "Privacy policy not found via known URLs, link scan, Brave Search, canonical paths, or sitemap."
 
     return result

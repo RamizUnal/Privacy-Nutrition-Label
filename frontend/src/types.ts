@@ -253,7 +253,14 @@ export interface AnalysisResult {
   policy_found: boolean;
   policy_url: string | null;
   policy_word_count: number;
-  policy_discovery_method: 'canonical_path' | 'link_scan' | 'sitemap' | 'ai_discovery' | null;
+  policy_discovery_method:
+    | 'link_scan'
+    | 'known_url'
+    | 'brave_search'
+    | 'canonical_path'
+    | 'sitemap'
+    | 'ai_discovery'
+    | null;
   overall_score: number;
   grade: 'A' | 'B' | 'C' | 'D' | 'F';
   risk_level: 'low' | 'medium' | 'high' | 'critical';

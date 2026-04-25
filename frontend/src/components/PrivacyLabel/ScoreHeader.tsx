@@ -14,6 +14,17 @@ const RISK_COLORS: Record<string, string> = {
   low: '#00e676', medium: '#ffd740', high: '#ff9100', critical: '#ff1744',
 };
 
+type DiscoveryMethod = NonNullable<AnalysisResult['policy_discovery_method']>;
+
+const DISCOVERY_METHOD_META: Record<DiscoveryMethod, { label: string; className: string }> = {
+  link_scan: { label: 'link scan', className: 'text-white/50' },
+  known_url: { label: 'known policy URL', className: 'text-emerald-400' },
+  brave_search: { label: 'Brave Search', className: 'text-amber-300' },
+  canonical_path: { label: 'canonical path', className: 'text-white/50' },
+  sitemap: { label: 'sitemap', className: 'text-blue-400' },
+  ai_discovery: { label: 'AI discovery', className: 'text-violet-400' },
+};
+
 function CountUp({ target, duration = 1200 }: { target: number; duration?: number }) {
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -32,6 +43,9 @@ function CountUp({ target, duration = 1200 }: { target: number; duration?: numbe
 export default function ScoreHeader({ result, onReanalyze }: Props) {
   const gradeColor = GRADE_COLORS[result.grade] || '#888';
   const riskColor = RISK_COLORS[result.risk_level] || '#888';
+  const discoveryMethod = result.policy_discovery_method
+    ? DISCOVERY_METHOD_META[result.policy_discovery_method]
+    : null;
 
   const chartData = [
     { name: 'score', value: result.overall_score, fill: gradeColor },
@@ -158,15 +172,10 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
                 <span className="text-white/60">{result.policy_word_count.toLocaleString()} words</span>
               </div>
             )}
-            {result.policy_discovery_method && (
+            {discoveryMethod && (
               <div className="flex justify-between text-xs font-mono">
                 <span className="text-white/30">Found via</span>
-                <span className={result.policy_discovery_method === 'ai_discovery' ? 'text-violet-400' : result.policy_discovery_method === 'sitemap' ? 'text-blue-400' : 'text-white/50'}>
-                  {result.policy_discovery_method === 'canonical_path' && 'canonical path'}
-                  {result.policy_discovery_method === 'link_scan'      && 'link scan'}
-                  {result.policy_discovery_method === 'sitemap'        && 'sitemap'}
-                  {result.policy_discovery_method === 'ai_discovery'   && '✦ AI discovery'}
-                </span>
+                <span className={discoveryMethod.className}>{discoveryMethod.label}</span>
               </div>
             )}
             {result.cached && (
