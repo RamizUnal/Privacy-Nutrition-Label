@@ -1036,26 +1036,6 @@ def _search_result_mentions_privacy(url: str, title: str = "", snippet: str = ""
     return any(re.search(pattern, haystack, re.I) for pattern in PRIVACY_LINK_PATTERNS)
 
 
-def _is_off_target_search_subdomain(url: str, domain: str) -> bool:
-    host = urlparse(url).netloc.lower()
-    if host.startswith("www."):
-        host = host[4:]
-
-    # The consumer Amazon policy lives on www.amazon.com. When maps are skipped,
-    # Brave often ranks AWS/Amazon Ads policies above the consumer policy.
-    if domain == "amazon.com":
-        off_target_hosts = {
-            "aws.amazon.com",
-            "advertising.amazon.com",
-            "sellercentral.amazon.com",
-            "developer.amazon.com",
-            "affiliate-program.amazon.com",
-        }
-        return host in off_target_hosts
-
-    return False
-
-
 def _score_search_result(url: str, title: str, snippet: str, domain: str) -> int:
     if _url_is_non_privacy_legal(url) or _url_is_interstitial(url):
         return -100
@@ -1074,18 +1054,12 @@ def _score_search_result(url: str, title: str, snippet: str, domain: str) -> int
     path = parsed.path.lower()
     same_domain = _same_registered_domain(url, target_url)
 
-    if _is_off_target_search_subdomain(url, domain):
-        return -100
-
     noisy_result_signals = [
         "devforum.", "forum.", "forums.", "community.", "discourse.",
         "/forum", "/forums", "/community", "/questions", "/answers", "/t/",
         "/interactive/", "/opinion/", "/article/", "/articles/", "/news/",
         "/wirecutter/", "/reviews/", "/video/", "/live/",
         "broken", "hyperlink", "not working", "bug report",
-        "changes to the privacy notice", "changes to our privacy notice",
-        "privacy notice changes", "privacy policy changes",
-        "previous privacy", "prior privacy", "archived privacy",
     ]
     if any(sig in host or sig in path or sig in blob for sig in noisy_result_signals):
         return -100
@@ -1432,7 +1406,6 @@ async def _accept_candidate_with_fallback(
     requested_url: str,
     *,
     render_on_fetch_fail: bool = False,
-    allow_reader_fallback: bool = False,
 ) -> Optional[Tuple[str, str, str]]:
     """
     Returns (accepted_url, final_html, extracted_text) if a candidate is accepted.
@@ -1455,7 +1428,7 @@ async def _accept_candidate_with_fallback(
                         else dyn_final_url
                     )
                     return accepted, dyn_html, dyn_text
-        if allow_reader_fallback or _url_has_privacy_signal(requested_url):
+        if _url_has_privacy_signal(requested_url):
             reader_text = await _fetch_reader_text(client, requested_url)
             if reader_text:
                 reader_valid, reader_extracted = await _smart_validate(
@@ -1488,7 +1461,7 @@ async def _accept_candidate_with_fallback(
                 return accepted, dyn_html, dyn_text
 
     reader_target = final_url if _url_has_privacy_signal(final_url) else requested_url
-    if allow_reader_fallback or _url_has_privacy_signal(reader_target):
+    if _url_has_privacy_signal(reader_target):
         reader_text = await _fetch_reader_text(client, reader_target)
         if reader_text:
             reader_valid, reader_extracted = await _smart_validate(
@@ -1605,17 +1578,17 @@ async def crawl_website(url: str) -> CrawlResult:
         # then use the top same-domain privacy-looking result.
         if not privacy_url and not known_attempted:
             for candidate in await _find_via_brave_search(client, domain):
+                brave_attempted = True
                 result.fetch_attempts.append(candidate)
-                accepted = await _accept_candidate_with_fallback(
-                    client,
-                    candidate,
-                    allow_reader_fallback=True,
-                )
+                accepted = await _accept_candidate_with_fallback(client, candidate)
                 if accepted:
                     privacy_url, accepted_html, extracted_text = accepted
-                    result.discovery_method = "brave_search"
-                    brave_attempted = True
-                    break
+                else:
+                    privacy_url = candidate
+                    accepted_html = ""
+                    extracted_text = ""
+                result.discovery_method = "brave_search"
+                break
 
         # Fetch the homepage only when policy discovery still needs local
         # links. This avoids slow/blocking homepages delaying known URL hits.
