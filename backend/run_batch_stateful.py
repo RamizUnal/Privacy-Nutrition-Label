@@ -109,7 +109,7 @@ async def main() -> None:
 
         try:
             for index, site in enumerate(sites, 1):
-                print(f"[{index}/{total}] Crawling {site}")
+                print(f"[{index}/{total}] Crawling {site}", flush=True)
                 site_id = _safe_name(site)
                 artifacts_dir = os.path.join(artifacts_root, site_id)
                 attempt_at = datetime.utcnow()
@@ -167,37 +167,42 @@ async def main() -> None:
 
                     _append_jsonl(results_path, row)
 
-                    s0 = ((stateful.get("states") or {}).get("S0") or {})
-                    s0_screenshot = os.path.join(artifacts_dir, "S0.png")
-                    s0_screenshot_path = s0_screenshot if os.path.exists(s0_screenshot) else None
+                    states = stateful.get("states") or {}
+                    for stage_name in ("S0", "S1", "S2"):
+                        stage = states.get(stage_name)
+                        if not stage:
+                            continue
 
-                    s0_metrics = {
-                        "request_count_total": s0.get("request_count_total"),
-                        "unique_etld1_total": s0.get("unique_etld1_total"),
-                        "unique_third_party_etld1": s0.get("unique_third_party_etld1"),
-                        "third_party_request_count": s0.get("third_party_request_count"),
-                        "cookies_total": s0.get("cookies_total"),
-                        "cookies_third_party_est": s0.get("cookies_third_party_est"),
-                        "cookie_httpOnly_false_pct": s0.get("cookie_httpOnly_false_pct"),
-                        "cookie_secure_false_pct": s0.get("cookie_secure_false_pct"),
-                        "cookie_samesite_none_pct": s0.get("cookie_samesite_none_pct"),
-                    }
+                        stage_screenshot = os.path.join(artifacts_dir, f"{stage_name}.png")
+                        stage_screenshot_path = stage_screenshot if os.path.exists(stage_screenshot) else None
 
-                    await upsert_crawl_stage(
-                        db=db,
-                        crawl_session_id=session.id,
-                        stage="S0",
-                        status="completed" if s0 else "failed",
-                        started_at=attempt_at,
-                        finished_at=datetime.utcnow(),
-                        action_raw=s0.get("action"),
-                        action_semantic=_s0_semantic_action(s0.get("action")),
-                        banner_detected=s0.get("banner_detected"),
-                        challenge_json=s0.get("challenge") or {},
-                        metrics_json=s0_metrics,
-                        screenshot_path=s0_screenshot_path,
-                        error=None if s0 else "missing_s0_state",
-                    )
+                        stage_metrics = {
+                            "request_count_total": stage.get("request_count_total"),
+                            "unique_etld1_total": stage.get("unique_etld1_total"),
+                            "unique_third_party_etld1": stage.get("unique_third_party_etld1"),
+                            "third_party_request_count": stage.get("third_party_request_count"),
+                            "cookies_total": stage.get("cookies_total"),
+                            "cookies_third_party_est": stage.get("cookies_third_party_est"),
+                            "cookie_httpOnly_false_pct": stage.get("cookie_httpOnly_false_pct"),
+                            "cookie_secure_false_pct": stage.get("cookie_secure_false_pct"),
+                            "cookie_samesite_none_pct": stage.get("cookie_samesite_none_pct"),
+                        }
+
+                        await upsert_crawl_stage(
+                            db=db,
+                            crawl_session_id=session.id,
+                            stage=stage_name,
+                            status="completed",
+                            started_at=attempt_at,
+                            finished_at=datetime.utcnow(),
+                            action_raw=stage.get("action"),
+                            action_semantic=_s0_semantic_action(stage.get("action")),
+                            banner_detected=stage.get("banner_detected"),
+                            challenge_json=stage.get("challenge") or {},
+                            metrics_json=stage_metrics,
+                            screenshot_path=stage_screenshot_path,
+                            error=None,
+                        )
 
                     session_status = "pending_human" if row.get("requires_human") else "s0_persisted"
                     await update_crawl_session_state(
@@ -275,12 +280,12 @@ async def main() -> None:
             )
             raise
 
-    print(f"Done. results={results_path}")
-    print(f"Run ID: {run_id}")
-    print(f"Human review queued: {human_count}")
-    print(f"Errors: {error_count}")
+    print(f"Done. results={results_path}", flush=True)
+    print(f"Run ID: {run_id}", flush=True)
+    print(f"Human review queued: {human_count}", flush=True)
+    print(f"Errors: {error_count}", flush=True)
     if human_count > 0:
-        print(f"Queue file: {human_queue_path}")
+        print(f"Queue file: {human_queue_path}", flush=True)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ BOLD='\033[1m'
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}║        Privacy Nutrition Label Generator              ║${NC}"
+echo -e "${BOLD}║        Privacy Nutrition Label Generator             ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
 

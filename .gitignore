@@ -35,4 +35,4 @@ dist/
 #test results
 phase*_out/
 phase*_smoke_out/
-batch_smoke_out/
+batch_smoke_out/backend/evaluation/results/

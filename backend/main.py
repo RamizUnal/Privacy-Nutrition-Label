@@ -36,6 +36,7 @@ from scoring.privacy_scorer import calculate_score
 from ai.policy_ai import analyze_policy_ai, stream_chat_response
 from ai.third_party_researcher import research_ecosystem
 from ai.claude_client import is_available as ai_available
+from tracker.stateful_adapter import run_integrated_state_crawl
 from analyzer.mismatch_analyzer import analyze_mismatches
 
 
@@ -176,9 +177,8 @@ async def analyze_website(
     dynamic_result = None
     if os.getenv("ENABLE_DYNAMIC_CRAWL", "").lower() in {"1", "true", "yes"}:
         try:
-            from tracker.dynamic_crawler import run_3_state_crawl
             dynamic_result = await asyncio.wait_for(
-                run_3_state_crawl(domain, req.url),
+                run_integrated_state_crawl(domain, req.url),
                 timeout=45.0,
             )
         except asyncio.TimeoutError:
