@@ -310,10 +310,18 @@ export interface MismatchAnalysis {
 export interface AIExtractionMeta {
   enabled: boolean;
   used: boolean;
+  complete?: boolean;
+  version?: number;
   reason?: string;
   data_categories_source?: 'ai' | 'fallback_regex';
   third_parties_source?: 'ai' | 'fallback_regex';
+  retention_source?: 'ai' | 'fallback_regex';
+  dark_patterns_source?: 'ai' | 'fallback_regex';
+  rights_source?: 'ai' | 'fallback_regex';
+  transparency_source?: 'ai' | 'fallback_regex';
   policy_chars_sent?: number;
+  attempts?: Record<string, { attempt?: string; raw_response_chars?: number }>;
+  errors?: string[];
 }
 
 export interface AnalysisResult {

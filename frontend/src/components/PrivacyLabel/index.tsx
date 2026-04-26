@@ -104,10 +104,10 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
         {activeTab === 'sharing'       && <ThirdParties analysis={result.third_parties} result={result} />}
         {activeTab === 'trackers'      && <Trackers trackers={result.trackers} runtime={result.runtime_observations} />}
         {activeTab === 'cookies'       && <Cookies trackers={result.trackers} runtime={result.runtime_observations} />}
-        {activeTab === 'retention'     && <Retention retention={result.retention} />}
-        {activeTab === 'dark_patterns' && <DarkPatterns analysis={result.dark_patterns} />}
-        {activeTab === 'rights'        && <Rights rights={result.rights} />}
-        {activeTab === 'transparency'  && <Sentiment sentiment={result.sentiment} />}
+        {activeTab === 'retention'     && <Retention retention={result.retention} result={result} />}
+        {activeTab === 'dark_patterns' && <DarkPatterns analysis={result.dark_patterns} result={result} />}
+        {activeTab === 'rights'        && <Rights rights={result.rights} result={result} />}
+        {activeTab === 'transparency'  && <Sentiment sentiment={result.sentiment} result={result} />}
         {activeTab === 'history'       && <PolicyHistory domain={result.domain} />}
 
         {activeTab === 'ai_insights' && (
