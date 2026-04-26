@@ -250,6 +250,33 @@ def analyze_mismatches(
             summary="Dynamic crawl data unavailable — mismatch analysis skipped.",
         )
 
+    state_quality = dynamic_result.get("state_quality") or {}
+    if isinstance(state_quality, dict):
+        usable_for_mismatch = bool(state_quality.get("usable_for_mismatch", True))
+        quality_reasons = state_quality.get("reasons") or []
+    else:
+        usable_for_mismatch = bool(getattr(state_quality, "usable_for_mismatch", True))
+        quality_reasons = getattr(state_quality, "reasons", []) or []
+
+    if not usable_for_mismatch:
+        reason_text = ", ".join(str(reason) for reason in quality_reasons) if quality_reasons else "insufficient confidence in S1/S2 state transitions"
+        return MismatchAnalysis(
+            mismatches=[],
+            total_count=0,
+            critical_count=0,
+            high_count=0,
+            medium_count=0,
+            low_count=0,
+            mismatch_score=50,
+            consent_effective=False,
+            consent_effectiveness_pct=0.0,
+            pre_consent_tracking=False,
+            pre_consent_tracker_count=0,
+            undeclared_tracker_count=0,
+            undeclared_tracker_names=[],
+            summary=f"Dynamic crawl inconclusive for mismatch analysis: {reason_text}.",
+        )
+
     text_lower = policy_text.lower()
     s0 = dynamic_result.get("S0", {})
     s1 = dynamic_result.get("S1", {})

@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
-import type { TrackerResult, DetectedTracker } from '../../types';
+import type { TrackerResult, RuntimeObservations } from '../../types';
 
-interface Props { trackers: TrackerResult; }
+interface Props {
+  trackers: TrackerResult;
+  runtime?: RuntimeObservations;
+}
 
 const RISK_COLORS: Record<string, string> = {
   low: '#22c55e', medium: '#f59e0b', high: '#ff6b00', critical: '#ff2d2d',
@@ -10,10 +13,10 @@ const SOURCE_ICONS: Record<string, string> = {
   script: '📜', pixel: '🔲', iframe: '🖼️', inline: '⚙️',
 };
 
-export default function Trackers({ trackers }: Props) {
+export default function Trackers({ trackers, runtime }: Props) {
   const [filter, setFilter] = useState('all');
 
-  if (!trackers) return (
+  if (!trackers && !runtime?.available) return (
     <div className="text-center py-16 text-white/30 font-mono text-sm">
       Tracker data unavailable. Homepage may not have been accessible.
     </div>
@@ -21,9 +24,87 @@ export default function Trackers({ trackers }: Props) {
 
   const allTrackers = trackers.trackers || [];
   const filtered = filter === 'all' ? allTrackers : allTrackers.filter(t => t.risk === filter);
+  const runtimeAvailable = !!runtime?.available;
+  const runtimeQuality = runtime?.quality || {};
+  const runtimeInconclusive =
+    !!runtime?.requires_human ||
+    runtimeQuality.usable_for_scoring === false ||
+    runtimeQuality.usable_for_mismatch === false;
+
+  const runtimeStates = runtime?.states || {};
+  const s0 = runtimeStates.S0;
+  const s1 = runtimeStates.S1;
+  const s2 = runtimeStates.S2;
+  const knownMatching = runtime?.known_tracker_matching_available !== false;
+  const runtimeKnownTrackerNames = Array.from(new Set([
+    ...(s0?.known_tracker_names || []),
+    ...(s1?.known_tracker_names || []),
+    ...(s2?.known_tracker_names || []),
+  ])).slice(0, 20);
+  const runtimeThirdPartyTotal = (s0?.third_party_request_count || 0) + (s1?.third_party_request_count || 0) + (s2?.third_party_request_count || 0);
 
   return (
     <div className="space-y-6">
+      {runtimeAvailable && (
+        <div className={`border rounded-xl p-4 ${runtimeInconclusive ? 'border-yellow-800/50 bg-yellow-900/10' : 'border-green-800/40 bg-green-900/10'}`}>
+          <p className={`font-mono text-xs ${runtimeInconclusive ? 'text-yellow-300/80' : 'text-green-300/80'}`}>
+            {runtimeInconclusive
+              ? 'Runtime crawl unavailable or inconclusive; falling back to static homepage detector.'
+              : 'Runtime browser crawl is the primary evidence source for this view.'}
+          </p>
+          {runtimeInconclusive && (
+            <p className="text-[11px] text-yellow-300/60 mt-2 font-mono">
+              Runtime crawl inconclusive{(runtime?.human_reasons || runtimeQuality.reasons || []).length ? `: ${[...(runtime?.human_reasons || []), ...(runtimeQuality.reasons || [])].join(', ')}` : '.'}
+            </p>
+          )}
+        </div>
+      )}
+
+      {runtimeAvailable && (
+        <div className="bg-panel border border-border rounded-xl p-5">
+          <h3 className="font-mono text-xs text-white/40 uppercase tracking-wider mb-3">Runtime Browser Evidence (S0/S1/S2)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              { key: 'S0', label: 'S0 Pre-Consent', state: s0 },
+              { key: 'S1', label: 'S1 Reject', state: s1 },
+              { key: 'S2', label: 'S2 Accept', state: s2 },
+            ].map(({ key, label, state }) => (
+              <div key={key} className="border border-border rounded-lg p-3 bg-surface/30">
+                <div className="font-mono text-[11px] text-white/50 uppercase mb-2">{label}</div>
+                <div className="text-xs text-white/60 flex justify-between"><span>Known trackers</span><span className="font-mono text-white/80">{knownMatching ? (state?.known_tracker_count ?? 0) : 'N/A'}</span></div>
+                <div className="text-xs text-white/60 flex justify-between mt-1"><span>3rd-party requests</span><span className="font-mono text-white/80">{state?.third_party_request_count ?? 0}</span></div>
+                <div className="text-xs text-white/60 flex justify-between mt-1"><span>3rd-party domains</span><span className="font-mono text-white/80">{(state?.third_party_domains || []).length}</span></div>
+              </div>
+            ))}
+          </div>
+          {!knownMatching && (
+            <p className="text-xs text-yellow-300/70 font-mono mt-3">
+              Known tracker matching is unavailable for runtime crawl; showing third-party request evidence instead. Third-party requests are not automatically trackers.
+            </p>
+          )}
+          {knownMatching && runtimeKnownTrackerNames.length > 0 && (
+            <div className="mt-3">
+              <div className="text-[10px] font-mono text-white/35 uppercase tracking-wider mb-2">Runtime known tracker names</div>
+              <div className="flex flex-wrap gap-2">
+                {runtimeKnownTrackerNames.map((name) => (
+                  <span key={name} className="px-2 py-1 rounded text-xs font-mono border border-border text-white/55 bg-surface">{name}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {knownMatching && runtimeKnownTrackerNames.length === 0 && runtimeThirdPartyTotal > 0 && (
+            <p className="text-xs text-white/50 font-mono mt-3">
+              No known tracker database matches. Runtime third-party requests are shown separately.
+            </p>
+          )}
+          {knownMatching && (s0?.known_tracker_count ?? 0) + (s1?.known_tracker_count ?? 0) + (s2?.known_tracker_count ?? 0) === 0 && (
+            <p className="text-xs text-white/45 font-mono mt-3">No known trackers confirmed by runtime matching.</p>
+          )}
+        </div>
+      )}
+
+      <div className="font-mono text-[11px] text-white/40 uppercase tracking-wider">Static HTML detector results</div>
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className={`bg-panel border rounded-xl p-4 ${trackers.total_tracker_count > 10 ? 'border-red-800/50' : 'border-border'}`}>
@@ -155,7 +236,7 @@ export default function Trackers({ trackers }: Props) {
         </div>
       ) : (
         <div className="text-center py-8 text-white/30 font-mono text-sm">
-          {allTrackers.length === 0 ? '✓ No trackers detected on homepage.' : 'No trackers match this filter.'}
+          {allTrackers.length === 0 ? 'No static trackers detected on homepage.' : 'No trackers match this filter.'}
         </div>
       )}
 

@@ -52,7 +52,7 @@ def _domain_from_site(site: str) -> str | None:
         return None
 
 
-def _s0_semantic_action(raw_action: str | None) -> str:
+def _semantic_action(raw_action: str | None) -> str:
     return raw_action if isinstance(raw_action, str) and raw_action else "unknown"
 
 
@@ -188,23 +188,25 @@ async def main() -> None:
                             "cookie_samesite_none_pct": stage.get("cookie_samesite_none_pct"),
                         }
 
+                        stage_failed = stage.get("ok") is False
+
                         await upsert_crawl_stage(
                             db=db,
                             crawl_session_id=session.id,
                             stage=stage_name,
-                            status="completed",
+                            status="failed" if stage_failed else "completed",
                             started_at=attempt_at,
                             finished_at=datetime.utcnow(),
                             action_raw=stage.get("action"),
-                            action_semantic=_s0_semantic_action(stage.get("action")),
+                            action_semantic=_semantic_action(stage.get("action")),
                             banner_detected=stage.get("banner_detected"),
                             challenge_json=stage.get("challenge") or {},
                             metrics_json=stage_metrics,
                             screenshot_path=stage_screenshot_path,
-                            error=None,
+                            error=(stage.get("note") or f"{stage_name}_failed") if stage_failed else None,
                         )
 
-                    session_status = "pending_human" if row.get("requires_human") else "s0_persisted"
+                    session_status = "pending_human" if row.get("requires_human") else "states_persisted"
                     await update_crawl_session_state(
                         db=db,
                         crawl_session_id=session.id,

@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import type { TrackerResult, CookieInfo } from '../../types';
+import type { TrackerResult, RuntimeObservations } from '../../types';
 
-interface Props { trackers: TrackerResult; }
+interface Props {
+  trackers: TrackerResult;
+  runtime?: RuntimeObservations;
+}
 
 const CAT_COLORS: Record<string, string> = {
   necessary: '#22c55e', analytics: '#3b82f6',
   advertising: '#ef4444', functional: '#a855f7', unknown: '#6b7280',
 };
 
-export default function Cookies({ trackers }: Props) {
+export default function Cookies({ trackers, runtime }: Props) {
   const [filter, setFilter] = useState('all');
 
   if (!trackers) return <div className="text-center py-16 text-white/30 font-mono text-sm">Cookie data unavailable.</div>;
@@ -16,6 +19,18 @@ export default function Cookies({ trackers }: Props) {
   const cookies = trackers.cookies || [];
   const filtered = filter === 'all' ? cookies : cookies.filter(c => c.category === filter);
   const sec = trackers.cookie_security || {};
+  const runtimeAvailable = !!runtime?.available;
+  const runtimeQuality = runtime?.quality || {};
+  const runtimeInconclusive =
+    !!runtime?.requires_human ||
+    runtimeQuality.usable_for_scoring === false ||
+    runtimeQuality.usable_for_mismatch === false;
+
+  const s0 = runtime?.states?.S0;
+  const s1 = runtime?.states?.S1;
+  const s2 = runtime?.states?.S2;
+  const runtimeCookieTotal = (s0?.total_cookies || 0) + (s1?.total_cookies || 0) + (s2?.total_cookies || 0);
+  const runtimeCookieNamesSample = Array.from(new Set([...(s0?.cookie_names || []), ...(s1?.cookie_names || []), ...(s2?.cookie_names || [])])).slice(0, 12);
 
   const catCounts: Record<string, number> = {};
   cookies.forEach(c => { catCounts[c.category] = (catCounts[c.category] || 0) + 1; });
@@ -34,6 +49,58 @@ export default function Cookies({ trackers }: Props) {
 
   return (
     <div className="space-y-6">
+      {runtimeAvailable && (
+        <div className="bg-panel border border-border rounded-xl p-5">
+          <h3 className="font-mono text-xs text-white/40 uppercase tracking-wider mb-3">Runtime browser cookies (primary)</h3>
+          <p className="text-xs font-mono text-white/45 mb-3">
+            Runtime cookies come from the Playwright browser crawl and may differ from static Set-Cookie header detection.
+          </p>
+          {runtimeInconclusive && (
+            <p className="text-xs font-mono text-yellow-300/70 mb-3">
+              Runtime crawl inconclusive{(runtime?.human_reasons || runtimeQuality.reasons || []).length ? `: ${[...(runtime?.human_reasons || []), ...(runtimeQuality.reasons || [])].join(', ')}` : '.'}
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            {[
+              { label: 'S0 Baseline', state: s0 },
+              { label: 'S1 Reject', state: s1 },
+              { label: 'S2 Accept', state: s2 },
+            ].map(({ label, state }) => (
+              <div key={label} className="border border-border rounded-lg p-3 bg-surface/30">
+                <div className="font-mono text-[11px] text-white/50 uppercase mb-2">{label}</div>
+                <div className="text-xs text-white/60 flex justify-between"><span>Runtime cookies</span><span className="font-mono text-white/80">{state?.total_cookies ?? 0}</span></div>
+                <div className="text-xs text-white/60 flex justify-between mt-1"><span>3rd-party requests</span><span className="font-mono text-white/80">{state?.third_party_request_count ?? 0}</span></div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-xs font-mono text-white/50 space-y-1">
+            <div>S1 - S0 cookie delta: {(s1?.total_cookies ?? 0) - (s0?.total_cookies ?? 0)}</div>
+            <div>S2 - S1 cookie delta: {(s2?.total_cookies ?? 0) - (s1?.total_cookies ?? 0)}</div>
+          </div>
+
+          {runtimeCookieNamesSample.length > 0 && (
+            <div className="mt-3">
+              <div className="text-[10px] font-mono text-white/35 uppercase tracking-wider mb-2">Runtime cookie names (sample)</div>
+              <div className="flex flex-wrap gap-2">
+                {runtimeCookieNamesSample.map((name) => (
+                  <span key={name} className="px-2 py-1 rounded text-xs font-mono border border-border text-white/45 bg-surface">{name}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {((s1?.click_verification as any)?.evidence || (s2?.click_verification as any)?.evidence) && (
+            <p className="text-xs font-mono text-white/40 mt-3">
+              Click verification evidence is available in Dynamic Scan (S1/S2).
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="font-mono text-[11px] text-white/40 uppercase tracking-wider">Static HTTP cookie detection</div>
+
       {/* Security metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
@@ -163,7 +230,9 @@ export default function Cookies({ trackers }: Props) {
         </div>
       ) : (
         <div className="text-center py-8 text-white/30 font-mono text-sm">
-          No cookies detected or page was not accessible.
+          {runtimeCookieTotal > 0
+            ? 'No static cookies were detected from the initial HTTP response, but runtime crawl observed cookies.'
+            : 'No cookies detected or page was not accessible.'}
         </div>
       )}
     </div>

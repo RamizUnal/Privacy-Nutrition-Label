@@ -82,18 +82,40 @@ def _state_error(state_name: str, state: Dict[str, Any]) -> Optional[str]:
 def _legacy_state(state_name: str, state: Dict[str, Any]) -> Dict[str, Any]:
     third_party_domains = _normalize_third_party_domains(state)
 
-    total_trackers = _first_value(
-        state,
-        ["total_trackers", "known_tracker_count", "third_party_request_count"],
-        default=0,
-    )
+    matching_available = bool(state.get("known_tracker_matching_available"))
+
+    total_trackers = _first_value(state, ["known_tracker_count", "total_trackers"], default=0)
     if not isinstance(total_trackers, int):
         try:
             total_trackers = int(total_trackers)
         except Exception:
             total_trackers = 0
 
+    known_tracker_count = _first_value(state, ["known_tracker_count"], default=None)
+    if known_tracker_count is not None and not isinstance(known_tracker_count, int):
+        try:
+            known_tracker_count = int(known_tracker_count)
+        except Exception:
+            known_tracker_count = None
+
+    third_party_request_count = _first_value(state, ["third_party_request_count"], default=0)
+    if not isinstance(third_party_request_count, int):
+        try:
+            third_party_request_count = int(third_party_request_count)
+        except Exception:
+            third_party_request_count = 0
+
     action_taken = _first_value(state, ["action_taken", "action", "status"], default="unknown")
+    known_tracker_names = state.get("known_tracker_names") if isinstance(state.get("known_tracker_names"), list) else []
+    known_tracker_domains = state.get("known_tracker_domains") if isinstance(state.get("known_tracker_domains"), list) else []
+    known_trackers = state.get("known_trackers") if isinstance(state.get("known_trackers"), list) else []
+
+    if not matching_available:
+        total_trackers = 0
+        known_tracker_count = None
+        known_tracker_names = []
+        known_tracker_domains = []
+        known_trackers = []
 
     return {
         "state": state_name,
@@ -101,9 +123,13 @@ def _legacy_state(state_name: str, state: Dict[str, Any]) -> Dict[str, Any]:
         "third_party_domains": third_party_domains,
         "total_cookies": _first_value(state, ["cookies_total", "total_cookies"], default=0),
         "total_trackers": total_trackers,
-        "tracker_names": [],
+        "known_tracker_count": known_tracker_count,
+        "known_tracker_domains": known_tracker_domains,
+        "third_party_request_count": third_party_request_count,
+        "tracker_names": known_tracker_names,
         "cookie_names": [],
-        "trackers_detected": [],
+        "trackers_detected": known_trackers,
+        "known_tracker_matching_available": matching_available,
         "action_taken": action_taken,
         "error": _state_error(state_name, state),
     }
@@ -118,6 +144,12 @@ def _is_reject_state_valid(s1: Dict[str, Any]) -> bool:
     # conservative: reject must have been explicitly clicked
     if "reject_clicked" not in action:
         return False
+
+    click_verification = s1.get("click_verification") or {}
+    if isinstance(click_verification, dict) and "likely_click_worked" in click_verification:
+        if click_verification.get("likely_click_worked") is False:
+            return False
+
     challenge = s1.get("challenge") or {}
     if any(bool(challenge.get(flag)) for flag in ("login_required", "recaptcha", "blocked")):
         return False
@@ -132,6 +164,12 @@ def _is_accept_state_valid(s2: Dict[str, Any]) -> bool:
     action = str(_first_value(s2, ["action", "action_taken", "status"], default="") or "").lower()
     if "accept_clicked" not in action:
         return False
+
+    click_verification = s2.get("click_verification") or {}
+    if isinstance(click_verification, dict) and "likely_click_worked" in click_verification:
+        if click_verification.get("likely_click_worked") is False:
+            return False
+
     challenge = s2.get("challenge") or {}
     if any(bool(challenge.get(flag)) for flag in ("login_required", "recaptcha", "blocked")):
         return False
@@ -154,6 +192,26 @@ def _build_quality(stateful: Dict[str, Any]) -> Dict[str, Any]:
     if not _is_accept_state_valid(s2):
         reasons.append("S2_accept_not_valid")
 
+    s1_action = str(_first_value(s1, ["action", "action_taken", "status"], default="") or "").lower()
+    s2_action = str(_first_value(s2, ["action", "action_taken", "status"], default="") or "").lower()
+    s1_verification = s1.get("click_verification") or {}
+    s2_verification = s2.get("click_verification") or {}
+
+    if "reject_clicked" in s1_action and isinstance(s1_verification, dict):
+        if s1_verification.get("likely_click_worked") is False:
+            reasons.append("S1_reject_click_unverified")
+
+    if "accept_clicked" in s2_action and isinstance(s2_verification, dict):
+        if s2_verification.get("likely_click_worked") is False:
+            reasons.append("S2_accept_click_unverified")
+
+    tracker_matching_available = any(
+        bool(_first_value(state, ["known_tracker_matching_available"], default=False))
+        for state in (s0, s1, s2)
+    )
+    if not tracker_matching_available:
+        reasons.append("tracker_matching_unavailable")
+
     for state_name, state in (("S0", s0), ("S1", s1), ("S2", s2)):
         challenge = state.get("challenge") or {}
         if challenge.get("login_required"):
@@ -167,7 +225,7 @@ def _build_quality(stateful: Dict[str, Any]) -> Dict[str, Any]:
 
     # scoring can still consume counts, mismatch requires stronger confidence
     usable_for_scoring = not requires_human
-    usable_for_mismatch = (not requires_human) and _is_reject_state_valid(s1)
+    usable_for_mismatch = (not requires_human) and _is_reject_state_valid(s1) and tracker_matching_available
 
     return {
         "usable_for_scoring": usable_for_scoring,
@@ -184,8 +242,8 @@ def _compute_mismatch_detected(stateful: Dict[str, Any], quality: Dict[str, Any]
     if not quality.get("usable_for_mismatch"):
         return False
 
-    s0_trackers = int(_first_value(s0, ["known_tracker_count", "third_party_request_count"], default=0) or 0)
-    s1_trackers = int(_first_value(s1, ["known_tracker_count", "third_party_request_count"], default=0) or 0)
+    s0_trackers = int(_first_value(s0, ["known_tracker_count"], default=0) or 0)
+    s1_trackers = int(_first_value(s1, ["known_tracker_count"], default=0) or 0)
     s0_cookies = int(_first_value(s0, ["cookies_total", "total_cookies"], default=0) or 0)
     s1_cookies = int(_first_value(s1, ["cookies_total", "total_cookies"], default=0) or 0)
 
@@ -225,8 +283,11 @@ async def run_integrated_state_crawl(domain: str, url: str) -> Dict[str, Any]:
             "mapping_notes": [
                 "total_requests <- request_count_total",
                 "third_party_domains <- top_third_party_domains_by_req",
-                "total_trackers <- known_tracker_count|third_party_request_count",
-                "tracker_names/cookie_names unavailable in source and left empty",
+                "total_trackers <- known_tracker_count",
+                "trackers_detected <- known_trackers",
+                "third_party_request_count preserved separately",
+                "tracker_names <- known_tracker_names",
+                "cookie_names unavailable in source and left empty",
             ],
         },
     }

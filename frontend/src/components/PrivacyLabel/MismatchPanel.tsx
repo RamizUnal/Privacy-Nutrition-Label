@@ -130,6 +130,11 @@ export default function MismatchPanel({ mismatch }: Props) {
     m => severityFilter === 'all' || m.severity === severityFilter
   );
 
+  const summary = mismatch.summary || '';
+  const isInconclusive =
+    /inconclusive/i.test(summary) ||
+    (mismatch.mismatch_score === 50 && mismatch.total_count === 0 && /Dynamic crawl/i.test(summary));
+
   const counts = [
     { key: 'all',      label: 'All',      n: mismatch.total_count,    color: '#888' },
     { key: 'critical', label: 'Critical', n: mismatch.critical_count, color: SEV_COLOR.critical },
@@ -140,7 +145,13 @@ export default function MismatchPanel({ mismatch }: Props) {
 
   const consentPct  = Math.round(mismatch.consent_effectiveness_pct);
   const consentGood = mismatch.consent_effective;
-  const consentColor = consentGood ? '#00e676' : mismatch.consent_effectiveness_pct > 30 ? '#ffd740' : '#ff1744';
+  const consentColor = isInconclusive
+    ? '#9ca3af'
+    : consentGood
+      ? '#00e676'
+      : mismatch.consent_effectiveness_pct > 30
+        ? '#ffd740'
+        : '#ff1744';
 
   return (
     <div className="space-y-6">
@@ -194,32 +205,38 @@ export default function MismatchPanel({ mismatch }: Props) {
           <div>
             <span className="font-mono text-sm text-white/70">Consent Effectiveness</span>
             <p className="text-xs font-mono text-white/30 mt-0.5">
-              % of trackers deactivated after rejecting consent
+                {isInconclusive
+                  ? 'Dynamic crawl could not reliably verify reject/accept behavior'
+                  : '% of trackers deactivated after rejecting consent'}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-2xl font-bold" style={{ color: consentColor }}>
-              {consentPct}%
-            </span>
+              <span className="font-mono text-2xl font-bold" style={{ color: consentColor }}>
+                {isInconclusive ? 'Inconclusive' : `${consentPct}%`}
+              </span>
             <span
               className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-full"
               style={{ color: consentColor, background: `${consentColor}20`, border: `1px solid ${consentColor}40` }}
             >
-              {consentGood ? 'Effective' : 'Ineffective'}
+              {isInconclusive ? 'Neutral' : consentGood ? 'Effective' : 'Ineffective'}
             </span>
           </div>
         </div>
-        <div className="score-bar h-3">
-          <div
-            className="score-bar-fill h-3 rounded-full transition-all duration-700"
-            style={{ width: `${consentPct}%`, background: consentColor }}
-          />
-        </div>
-        {!consentGood && mismatch.consent_effectiveness_pct < 50 && (
-          <p className="text-xs text-red-400/70 font-mono mt-2">
-            ⚠ Rejecting consent has little effect on tracking — this may violate GDPR Art. 7.
-          </p>
-        )}
+          <div className="score-bar h-3">
+            <div
+              className="score-bar-fill h-3 rounded-full transition-all duration-700"
+              style={{ width: isInconclusive ? '50%' : `${consentPct}%`, background: consentColor }}
+            />
+          </div>
+          {isInconclusive ? (
+            <p className="text-xs text-white/40 font-mono mt-2">
+              Dynamic crawl could not reliably verify reject/accept behavior. See analysis summary for reasons.
+            </p>
+          ) : !consentGood && mismatch.consent_effectiveness_pct < 50 ? (
+            <p className="text-xs text-red-400/70 font-mono mt-2">
+              ⚠ Rejecting consent has little effect on tracking — this may violate GDPR Art. 7.
+            </p>
+          ) : null}
       </div>
 
       {/* ── Undeclared tracker names ── */}
@@ -243,10 +260,10 @@ export default function MismatchPanel({ mismatch }: Props) {
       )}
 
       {/* ── Summary ── */}
-      {mismatch.summary && (
+      {summary && (
         <div className="bg-panel border border-border rounded-xl p-5">
           <div className="text-[10px] font-mono text-white/30 uppercase tracking-wider mb-2">Analysis Summary</div>
-          <p className="text-sm font-sans text-white/60 leading-relaxed">{mismatch.summary}</p>
+          <p className="text-sm font-sans text-white/60 leading-relaxed">{summary}</p>
         </div>
       )}
 
@@ -273,6 +290,14 @@ export default function MismatchPanel({ mismatch }: Props) {
 
           <div className="space-y-3">
             {filtered.map((m, i) => <MismatchCard key={i} m={m} />)}
+          </div>
+        </div>
+      ) : isInconclusive ? (
+        <div className="bg-panel border border-border rounded-xl p-8 flex flex-col items-center">
+          <div className="text-4xl mb-3">ℹ️</div>
+          <div className="font-mono text-sm text-white/70">Mismatch analysis inconclusive</div>
+          <div className="text-xs font-mono text-white/30 mt-1 text-center max-w-md">
+            Dynamic crawl could not reliably verify reject/accept behavior, so no mismatch verdict is shown.
           </div>
         </div>
       ) : (

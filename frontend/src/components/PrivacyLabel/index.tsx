@@ -102,8 +102,8 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
         {activeTab === 'mismatch'      && <MismatchPanel mismatch={result.mismatch_analysis} />}
         {activeTab === 'data'          && <DataTypes dataTypes={result.data_types || []} result={result} />}
         {activeTab === 'sharing'       && <ThirdParties analysis={result.third_parties} result={result} />}
-        {activeTab === 'trackers'      && <Trackers trackers={result.trackers} />}
-        {activeTab === 'cookies'       && <Cookies trackers={result.trackers} />}
+        {activeTab === 'trackers'      && <Trackers trackers={result.trackers} runtime={result.runtime_observations} />}
+        {activeTab === 'cookies'       && <Cookies trackers={result.trackers} runtime={result.runtime_observations} />}
         {activeTab === 'retention'     && <Retention retention={result.retention} />}
         {activeTab === 'dark_patterns' && <DarkPatterns analysis={result.dark_patterns} />}
         {activeTab === 'rights'        && <Rights rights={result.rights} />}

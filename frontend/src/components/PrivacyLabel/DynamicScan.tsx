@@ -15,6 +15,20 @@ export default function DynamicScan({ dynamic }: Props) {
   }
 
   const { S0, S1, S2, mismatch_detected } = dynamic;
+  const quality = dynamic.state_quality || {};
+  const requiresHuman = !!dynamic.requires_human;
+  const qualityReasons = [
+    ...(dynamic.human_reasons || []),
+    ...(quality.reasons || []),
+  ];
+  const runtimeInconclusive =
+    requiresHuman ||
+    quality.usable_for_scoring === false ||
+    quality.usable_for_mismatch === false;
+
+  const stateful = dynamic._stateful?.states || {};
+  const s1ClickVerification = stateful.S1?.click_verification;
+  const s2ClickVerification = stateful.S2?.click_verification;
 
   return (
     <div className="space-y-6">
@@ -25,6 +39,21 @@ export default function DynamicScan({ dynamic }: Props) {
         <p className="text-xs text-white/40 mb-5 leading-relaxed">
           The automated crawler visited the site in 3 distinct consent states to verify if tracking behavior matches the stated policy.
         </p>
+        <p className="text-xs text-white/40 mb-5 leading-relaxed">
+          These counts come from a live browser crawl. Trackers/Cookies tabs now use this runtime evidence first when available.
+        </p>
+
+        <div className={`border rounded-xl p-4 mb-6 ${runtimeInconclusive ? 'border-yellow-800/50 bg-yellow-900/10' : 'border-green-800/40 bg-green-900/10'}`}>
+          <p className={`font-mono text-xs ${runtimeInconclusive ? 'text-yellow-300/80' : 'text-green-300/80'}`}>
+            {runtimeInconclusive ? 'Runtime crawl inconclusive.' : 'Runtime crawl quality is usable for scoring.'}
+          </p>
+          <p className="text-xs text-white/45 mt-2 font-mono">
+            usable_for_scoring={String(quality.usable_for_scoring)} · usable_for_mismatch={String(quality.usable_for_mismatch)} · requires_human={String(requiresHuman)}
+          </p>
+          {qualityReasons.length > 0 && (
+            <p className="text-xs text-white/40 mt-2 font-mono">reasons: {qualityReasons.join(', ')}</p>
+          )}
+        </div>
 
         {mismatch_detected && (
           <div className="border border-red-800/50 bg-red-900/10 rounded-xl p-4 mb-6">
@@ -118,6 +147,22 @@ export default function DynamicScan({ dynamic }: Props) {
           </div>
 
         </div>
+
+        {(s1ClickVerification || s2ClickVerification) && (
+          <div className="mt-6 border border-border rounded-xl p-4 bg-surface/20">
+            <h4 className="font-mono text-xs text-white/40 uppercase tracking-wider mb-3">Click verification</h4>
+            {s1ClickVerification && (
+              <p className="text-xs text-white/50 font-mono mb-2">
+                S1 likely_click_worked={String(s1ClickVerification.likely_click_worked)} · evidence={((s1ClickVerification.evidence || []) as string[]).join(', ') || 'none'}
+              </p>
+            )}
+            {s2ClickVerification && (
+              <p className="text-xs text-white/50 font-mono">
+                S2 likely_click_worked={String(s2ClickVerification.likely_click_worked)} · evidence={((s2ClickVerification.evidence || []) as string[]).join(', ') || 'none'}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

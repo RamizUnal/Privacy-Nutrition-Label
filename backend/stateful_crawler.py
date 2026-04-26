@@ -9,6 +9,8 @@ from urllib.parse import urlparse
 import tldextract
 from playwright.async_api import Page, async_playwright
 
+from tracker.known_tracker_matcher import match_known_trackers_from_urls
+
 
 ACCEPT_PATTERNS = [
     "accept all", "accept", "agree", "i agree", "allow all",
@@ -36,6 +38,10 @@ BLOCK_KEYWORDS = [
     "bot detection", "security check", "datadome", "arkoselabs",
 ]
 
+CONSENT_STORAGE_KEYWORDS = [
+    "consent", "cookie", "gdpr", "ccpa", "onetrust", "optanon", "cookiebot", "didomi", "trustarc", "euconsent",
+]
+
 
 def _host(url: str) -> Optional[str]:
     try:
@@ -51,6 +57,87 @@ def _etld1(hostname: Optional[str]) -> Optional[str]:
     if not ext.domain or not ext.suffix:
         return None
     return f"{ext.domain}.{ext.suffix}"
+
+
+def _is_consent_key(key: str) -> bool:
+    key_lower = key.lower()
+    return any(token in key_lower for token in CONSENT_STORAGE_KEYWORDS)
+
+
+async def _read_consent_storage(page: Page) -> Dict[str, Any]:
+    try:
+        storage = await page.evaluate(
+            """
+            () => {
+                const match = (key) => {
+                    const k = String(key || '').toLowerCase();
+                    return ['consent','cookie','gdpr','ccpa','onetrust','optanon','cookiebot','didomi','trustarc','euconsent']
+                        .some(t => k.includes(t));
+                };
+
+                const readStorage = (store) => {
+                    const out = {};
+                    try {
+                        for (let i = 0; i < store.length; i++) {
+                            const key = store.key(i);
+                            if (match(key)) {
+                                out[key] = store.getItem(key);
+                            }
+                        }
+                    } catch (_) {}
+                    return out;
+                };
+
+                const cookieOut = {};
+                try {
+                    const raw = document.cookie || '';
+                    for (const part of raw.split(';')) {
+                        const piece = part.trim();
+                        if (!piece) continue;
+                        const idx = piece.indexOf('=');
+                        const key = idx >= 0 ? piece.slice(0, idx).trim() : piece;
+                        const value = idx >= 0 ? piece.slice(idx + 1).trim() : '';
+                        if (match(key)) {
+                            cookieOut[key] = value;
+                        }
+                    }
+                } catch (_) {}
+
+                return {
+                    localStorage: readStorage(window.localStorage),
+                    sessionStorage: readStorage(window.sessionStorage),
+                    cookies: cookieOut,
+                };
+            }
+            """
+        )
+        if isinstance(storage, dict):
+            return storage
+    except Exception:
+        pass
+    return {"localStorage": {}, "sessionStorage": {}, "cookies": {}}
+
+
+def _cookie_name_set(cookies: List[Dict[str, Any]]) -> set[str]:
+    return {str(cookie.get("name", "")) for cookie in cookies if cookie.get("name")}
+
+
+def _third_party_domains_from_urls(urls: List[str], first_party_etld1: str) -> List[str]:
+    domains: List[str] = []
+    if not first_party_etld1:
+        return domains
+
+    seen = set()
+    for request_url in urls:
+        hostname = _host(request_url)
+        domain = _etld1(hostname)
+        if not domain or domain == first_party_etld1:
+            continue
+        if domain in seen:
+            continue
+        seen.add(domain)
+        domains.append(domain)
+    return domains
 
 
 async def _click_first_matching_button(page: Page, keywords: List[str]) -> bool:
@@ -148,6 +235,7 @@ class CrawlStateResult:
     action: str
     challenge: Dict[str, bool]
     note: Optional[str] = None
+    click_verification: Optional[Dict[str, Any]] = None
 
 
 async def crawl_site_states(
@@ -204,6 +292,17 @@ async def crawl_site_states(
             banner = await _detect_banner(page)
             challenge = await _detect_challenge_or_login(page)
             action_taken = "none"
+            click_verification: Optional[Dict[str, Any]] = None
+            clicked = False
+
+            request_count_before_click = len(request_urls)
+            url_before = page.url
+            banner_before = banner
+            try:
+                cookies_before = await context.cookies()
+            except Exception:
+                cookies_before = []
+            storage_before = await _read_consent_storage(page)
 
             if consent_action == "accept":
                 clicked = await _click_first_matching_button(page, ACCEPT_PATTERNS)
@@ -221,6 +320,71 @@ async def crawl_site_states(
                         action_taken = "reject_not_found"
 
             await page.wait_for_timeout(1800)
+
+            requests_after_click = request_urls[request_count_before_click:]
+            url_after = page.url
+            banner_after = await _detect_banner(page)
+            try:
+                cookies_after = await context.cookies()
+            except Exception:
+                cookies_after = []
+            storage_after = await _read_consent_storage(page)
+
+            third_party_domains_after_click = _third_party_domains_from_urls(requests_after_click, first_party or "")
+            cookie_names_before = _cookie_name_set(cookies_before)
+            cookie_names_after = _cookie_name_set(cookies_after)
+            new_cookie_names = sorted(cookie_names_after - cookie_names_before)
+
+            banner_disappeared = bool(banner_before and (not banner_after))
+            consent_storage_changed = storage_before != storage_after
+            post_click_network_activity = len(requests_after_click) > 0
+
+            likely_click_worked = clicked and (
+                banner_disappeared
+                or consent_storage_changed
+                or len(new_cookie_names) > 0
+                or post_click_network_activity
+            )
+
+            evidence: List[str] = []
+            if clicked:
+                evidence.append("click_element_triggered")
+            else:
+                evidence.append("click_element_not_triggered")
+            if banner_disappeared:
+                evidence.append("banner_disappeared")
+            if consent_storage_changed:
+                evidence.append("consent_storage_changed")
+            if new_cookie_names:
+                evidence.append(f"new_cookie_names:{', '.join(new_cookie_names[:8])}")
+            if post_click_network_activity:
+                evidence.append("post_click_network_activity_observed_weak_signal")
+            if not likely_click_worked:
+                evidence.append("click_effect_not_observed")
+
+            if consent_action in ("reject", "accept"):
+                click_verification = {
+                    "target_action": consent_action,
+                    "clicked": bool(clicked),
+                    "url_before": url_before,
+                    "url_after": url_after,
+                    "banner_before": bool(banner_before),
+                    "banner_after": bool(banner_after),
+                    "banner_disappeared": banner_disappeared,
+                    "requests_before_click": request_count_before_click,
+                    "requests_after_click": len(requests_after_click),
+                    "request_urls_after_click": requests_after_click,
+                    "third_party_requests_after_click": len(third_party_domains_after_click),
+                    "new_third_party_domains_after_click": third_party_domains_after_click,
+                    "cookies_before_click": len(cookies_before),
+                    "cookies_after_click": len(cookies_after),
+                    "new_cookie_names_after_click": new_cookie_names,
+                    "consent_storage_before": storage_before,
+                    "consent_storage_after": storage_after,
+                    "consent_storage_changed": consent_storage_changed,
+                    "likely_click_worked": likely_click_worked,
+                    "evidence": evidence,
+                }
 
             post_challenge = await _detect_challenge_or_login(page)
             challenge = {
@@ -252,10 +416,11 @@ async def crawl_site_states(
                 ok=True,
                 state=state_name,
                 request_urls=request_urls,
-                cookies=cookies,
+                cookies=cookies_after,
                 banner_detected=banner,
                 action=action_taken,
                 challenge=challenge,
+                click_verification=click_verification,
             )
 
         s0 = await run_state("S0", "none")
@@ -290,12 +455,18 @@ async def crawl_site_states(
             if isinstance(same_site, str) and same_site.lower() == "none":
                 cookie_samesite_none += 1
 
+        tracker_matches = match_known_trackers_from_urls(
+            state.request_urls,
+            first_party_etld1=first_party,
+        )
+
         return {
             "ok": state.ok,
             "note": state.note,
             "banner_detected": state.banner_detected,
             "action": state.action,
             "challenge": state.challenge,
+            "click_verification": state.click_verification,
             "request_count_total": len(state.request_urls),
             "unique_etld1_total": len(set(req_domains)),
             "unique_third_party_etld1": len(set(third_party_domains)),
@@ -306,6 +477,11 @@ async def crawl_site_states(
             "cookie_secure_false_pct": (cookie_secure_false / cookie_total) if cookie_total else None,
             "cookie_samesite_none_pct": (cookie_samesite_none / cookie_total) if cookie_total else None,
             "top_third_party_domains_by_req": third_party_counts.most_common(12),
+            "known_tracker_count": tracker_matches.get("known_tracker_count", 0),
+            "known_tracker_names": tracker_matches.get("known_tracker_names", []),
+            "known_tracker_domains": tracker_matches.get("known_tracker_domains", []),
+            "known_trackers": tracker_matches.get("known_trackers", []),
+            "known_tracker_matching_available": tracker_matches.get("known_tracker_matching_available", False),
         }
 
     out["states"]["S0"] = summarize(s0)

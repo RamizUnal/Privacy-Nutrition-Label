@@ -320,22 +320,35 @@ def calculate_score(
 
     # ── Dynamic Crawling Evaluation (S0, S1, S2) ───────────────────────────────
     if dynamic_crawling:
-        s0 = dynamic_crawling.get("S0", {})
-        s1 = dynamic_crawling.get("S1", {})
-        s0_trackers = s0.get("total_trackers", 0)
-        s1_trackers = s1.get("total_trackers", 0)
-        mismatch = dynamic_crawling.get("mismatch_detected", False)
+        state_quality = dynamic_crawling.get("state_quality") or {}
+        if isinstance(state_quality, dict):
+            usable_for_scoring = bool(state_quality.get("usable_for_scoring", True))
+        else:
+            usable_for_scoring = bool(getattr(state_quality, "usable_for_scoring", True))
 
-        if mismatch:
-            # S1 (Reject) resulted in same or more trackers than S0 (Baseline)
-            technical_score -= 25
-            penalties.append({"dimension": "technical", "reason": f"Consent mismatch: Tracking behavior unchanged or worsened after explicitly rejecting consent (S0: {s0_trackers}, S1: {s1_trackers})", "penalty": 25})
-        elif s0_trackers > 0 and s1_trackers < s0_trackers:
-            bonuses.append({"dimension": "technical", "reason": f"Trackers successfully reduced after rejecting consent (S0: {s0_trackers} -> S1: {s1_trackers})", "bonus": 10})
-        
-        if s0_trackers > 5:
-            technical_score -= 10
-            penalties.append({"dimension": "technical", "reason": f"Tracking started before consent (S0/Baseline has {s0_trackers} trackers)", "penalty": 10})
+        if usable_for_scoring:
+            s0 = dynamic_crawling.get("S0", {})
+            s1 = dynamic_crawling.get("S1", {})
+            s0_trackers = s0.get("total_trackers", 0)
+            s1_trackers = s1.get("total_trackers", 0)
+            mismatch = dynamic_crawling.get("mismatch_detected", False)
+
+            if mismatch:
+                # S1 (Reject) resulted in same or more trackers than S0 (Baseline)
+                technical_score -= 25
+                penalties.append({"dimension": "technical", "reason": f"Consent mismatch: Tracking behavior unchanged or worsened after explicitly rejecting consent (S0: {s0_trackers}, S1: {s1_trackers})", "penalty": 25})
+            elif s0_trackers > 0 and s1_trackers < s0_trackers:
+                bonuses.append({"dimension": "technical", "reason": f"Trackers successfully reduced after rejecting consent (S0: {s0_trackers} -> S1: {s1_trackers})", "bonus": 10})
+            
+            if s0_trackers > 5:
+                technical_score -= 10
+                penalties.append({"dimension": "technical", "reason": f"Tracking started before consent (S0/Baseline has {s0_trackers} trackers)", "penalty": 10})
+        else:
+            penalties.append({
+                "dimension": "technical",
+                "reason": "Dynamic crawl inconclusive; technical crawl adjustments skipped.",
+                "penalty": 0,
+            })
 
     technical_score = max(0, technical_score)
 

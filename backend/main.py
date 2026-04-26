@@ -541,6 +541,7 @@ async def ai_chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
 
 def _build_result(url, domain, crawl, analysis, tracker_result, score, dynamic_result=None, mismatch_result=None) -> dict:
     tr = _dc(tracker_result) if tracker_result else {}
+    runtime_observations = _build_runtime_observations(dynamic_result)
     return {
         "url": url,
         "domain": domain,
@@ -573,8 +574,134 @@ def _build_result(url, domain, crawl, analysis, tracker_result, score, dynamic_r
         "third_parties": analysis.get("third_parties", {}),
         "ai_extraction": analysis.get("ai_extraction"),
         "trackers": tr,
+        "tracker_detection_source": "static_html",
+        "static_detection": tr,
         "dynamic_crawling": dynamic_result,
+        "runtime_observations": runtime_observations,
         "mismatch_analysis": mismatch_result,
+    }
+
+
+def _extract_cookie_names(cookies: Any) -> List[str]:
+    names: List[str] = []
+    if isinstance(cookies, list):
+        for item in cookies:
+            if isinstance(item, dict):
+                name = item.get("name")
+                if isinstance(name, str) and name:
+                    names.append(name)
+    return sorted(set(names))
+
+
+def _extract_known_tracker_names(state: Dict[str, Any]) -> List[str]:
+    names: List[str] = []
+    raw = state.get("known_tracker_names")
+    if isinstance(raw, list):
+        names.extend([name for name in raw if isinstance(name, str) and name])
+
+    detected = state.get("trackers_detected")
+    if isinstance(detected, list):
+        for item in detected:
+            if isinstance(item, dict):
+                name = item.get("name")
+                if isinstance(name, str) and name:
+                    names.append(name)
+
+    return sorted(set(names))
+
+
+def _normalize_runtime_state(label: str, state: Dict[str, Any]) -> Dict[str, Any]:
+    third_party_domains = state.get("third_party_domains")
+    if not isinstance(third_party_domains, list):
+        top_domains = state.get("top_third_party_domains_by_req")
+        if isinstance(top_domains, list):
+            third_party_domains = [item[0] for item in top_domains if isinstance(item, (list, tuple)) and item and isinstance(item[0], str)]
+        else:
+            third_party_domains = []
+
+    known_tracker_count = state.get("known_tracker_count")
+    if not isinstance(known_tracker_count, int):
+        known_tracker_count = None
+
+    known_tracker_domains = state.get("known_tracker_domains")
+    if not isinstance(known_tracker_domains, list):
+        known_tracker_domains = []
+
+    known_trackers = state.get("known_trackers")
+    if not isinstance(known_trackers, list):
+        known_trackers = []
+
+    known_tracker_matching_available = state.get("known_tracker_matching_available")
+    if not isinstance(known_tracker_matching_available, bool):
+        known_tracker_matching_available = isinstance(known_tracker_count, int)
+
+    action_value = state.get("action")
+    if not isinstance(action_value, str):
+        action_value = state.get("action_taken") if isinstance(state.get("action_taken"), str) else None
+
+    return {
+        "label": label,
+        "action": action_value,
+        "ok": state.get("ok") if isinstance(state.get("ok"), bool) else None,
+        "banner_detected": state.get("banner_detected") if isinstance(state.get("banner_detected"), bool) else None,
+        "total_requests": state.get("request_count_total", state.get("total_requests", 0)),
+        "third_party_request_count": state.get("third_party_request_count", 0),
+        "third_party_domains": third_party_domains,
+        "total_cookies": state.get("cookies_total", state.get("total_cookies", 0)),
+        "cookie_names": state.get("cookie_names") if isinstance(state.get("cookie_names"), list) else _extract_cookie_names(state.get("cookies") or []),
+        "known_tracker_count": known_tracker_count,
+        "known_tracker_names": _extract_known_tracker_names(state),
+        "known_tracker_domains": known_tracker_domains,
+        "known_trackers": known_trackers,
+        "known_tracker_matching_available": known_tracker_matching_available,
+        "click_verification": state.get("click_verification"),
+    }
+
+
+def _build_runtime_observations(dynamic_result: Optional[dict]) -> Dict[str, Any]:
+    if not dynamic_result:
+        return {
+            "available": False,
+            "source": "stateful_dynamic_crawl",
+            "known_tracker_matching_available": False,
+            "states": {},
+        }
+
+    stateful = dynamic_result.get("_stateful") if isinstance(dynamic_result, dict) else None
+    source_states = (stateful or {}).get("states") if isinstance(stateful, dict) else None
+    source_states = source_states if isinstance(source_states, dict) else {}
+
+    if not source_states:
+        source_states = {
+            "S0": dynamic_result.get("S0") or {},
+            "S1": dynamic_result.get("S1") or {},
+            "S2": dynamic_result.get("S2") or {},
+        }
+
+    states = {
+        "S0": _normalize_runtime_state("Pre-Consent", source_states.get("S0") or {}),
+        "S1": _normalize_runtime_state("Reject", source_states.get("S1") or {}),
+        "S2": _normalize_runtime_state("Accept", source_states.get("S2") or {}),
+    }
+
+    known_tracker_matching_available = any(
+        bool(state.get("known_tracker_matching_available"))
+        for state in states.values()
+    )
+
+    quality = dynamic_result.get("state_quality") if isinstance(dynamic_result, dict) else None
+    requires_human = bool(dynamic_result.get("requires_human")) if isinstance(dynamic_result, dict) else False
+    human_reasons = list(dynamic_result.get("human_reasons") or []) if isinstance(dynamic_result, dict) else []
+
+    return {
+        "available": True,
+        "source": "stateful_dynamic_crawl",
+        "quality": quality,
+        "requires_human": requires_human,
+        "human_reasons": human_reasons,
+        "known_tracker_matching_available": known_tracker_matching_available,
+        "states": states,
+        "derived": (stateful or {}).get("derived") if isinstance(stateful, dict) else None,
     }
 
 

@@ -189,6 +189,67 @@ export interface DynamicCrawlingResult {
   S1: DynamicState;
   S2: DynamicState;
   mismatch_detected: boolean;
+  requires_human?: boolean;
+  human_reasons?: string[];
+  state_quality?: {
+    usable_for_scoring?: boolean;
+    usable_for_mismatch?: boolean;
+    reasons?: string[];
+  };
+  _stateful?: {
+    states?: Record<string, any>;
+    derived?: Record<string, any>;
+  };
+}
+
+export interface RuntimeStateObservation {
+  label?: string;
+  action?: string | null;
+  ok?: boolean | null;
+  banner_detected?: boolean | null;
+  total_requests?: number;
+  third_party_request_count?: number;
+  third_party_domains?: string[];
+  total_cookies?: number;
+  cookie_names?: string[];
+  known_tracker_count?: number | null;
+  known_tracker_names?: string[];
+  known_tracker_domains?: string[];
+  known_trackers?: Array<{
+    name?: string;
+    domain?: string;
+    category?: string | null;
+    risk?: string | null;
+    fingerprinting?: boolean | null;
+    session_recording?: boolean | null;
+    description?: string | null;
+    opt_out?: string | null;
+    url_sample?: string | null;
+    vendor_trust_score?: number | null;
+    vendor_is_data_broker?: boolean | null;
+    vendor_purposes?: string[] | null;
+  }>;
+  known_tracker_matching_available?: boolean;
+  click_verification?: Record<string, any> | null;
+}
+
+export interface RuntimeObservations {
+  available: boolean;
+  source?: string;
+  quality?: {
+    usable_for_scoring?: boolean;
+    usable_for_mismatch?: boolean;
+    reasons?: string[];
+  };
+  requires_human?: boolean;
+  human_reasons?: string[];
+  known_tracker_matching_available?: boolean;
+  states?: {
+    S0?: RuntimeStateObservation;
+    S1?: RuntimeStateObservation;
+    S2?: RuntimeStateObservation;
+  };
+  derived?: Record<string, any> | null;
 }
 
 export interface ScoreBreakdown {
@@ -285,6 +346,7 @@ export interface AnalysisResult {
   third_parties: ThirdPartyAnalysis;
   trackers: TrackerResult;
   dynamic_crawling?: DynamicCrawlingResult;
+  runtime_observations?: RuntimeObservations;
   mismatch_analysis?: MismatchAnalysis;
   ai_extraction?: AIExtractionMeta | null;
 }
