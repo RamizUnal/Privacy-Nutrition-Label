@@ -29,7 +29,7 @@ from database.crud import (
     get_all_analyzed_domains,
     get_policy_text,
 )
-from crawler import crawl_website, extract_domain
+from crawler import crawl_website, debug_policy_discovery, extract_domain
 from analyzer.policy_analyzer import analyze_policy
 from tracker.detector import detect_trackers_from_html
 from scoring.privacy_scorer import calculate_score
@@ -409,6 +409,15 @@ async def get_policy_text_for_domain(domain: str, db: AsyncSession = Depends(get
         "is_current": version.is_current,
         "text": version.raw_text or "",
     }
+
+
+@app.get("/debug/policy-discovery")
+async def debug_policy_discovery_for_domain(domain: str = Query(..., min_length=1)):
+    """
+    Return the policy discovery trace: known URL status, Brave raw results,
+    Claude-reranked candidates, heuristic fallback, and combined candidate order.
+    """
+    return await debug_policy_discovery(domain)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -279,6 +279,38 @@ export interface AnalysisResult {
   mismatch_analysis?: MismatchAnalysis;
 }
 
+export interface PolicyTextResponse {
+  domain: string;
+  policy_url: string;
+  word_count: number;
+  fetched_at: string | null;
+  content_hash: string;
+  is_current: boolean;
+  text: string;
+}
+
+export interface PolicyDiscoveryRawResult {
+  url: string;
+  title: string;
+  description: string;
+}
+
+export interface PolicyDiscoveryDebug {
+  input: string;
+  domain: string;
+  search_domain: string;
+  known_policy_urls_skipped: boolean;
+  known_policy_candidates: string[];
+  brave_search_configured: boolean;
+  claude_rerank_enabled: boolean;
+  claude_configured: boolean;
+  query: string;
+  ai_candidates: string[];
+  heuristic_candidates: string[];
+  combined_candidates: string[];
+  raw_results: PolicyDiscoveryRawResult[];
+}
+
 export interface HistoryEntry {
   id: number;
   analyzed_at: string;

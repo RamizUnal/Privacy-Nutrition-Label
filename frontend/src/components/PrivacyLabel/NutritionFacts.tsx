@@ -1,5 +1,6 @@
 import React from 'react';
 import type { AnalysisResult } from '../../types';
+import PolicyTextPanel from './PolicyTextPanel';
 
 interface Props {
   result: AnalysisResult;
@@ -264,6 +265,8 @@ export default function NutritionFacts({ result, onTabChange }: Props) {
             </div>
           </div>
         )}
+
+        <PolicyTextPanel result={result} />
       </div>
     </div>
   );

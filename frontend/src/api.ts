@@ -1,5 +1,13 @@
 import axios from 'axios';
-import type { AnalysisResult, DomainHistory, PolicyAIAnalysis, EcosystemMap, ChatMessage } from './types';
+import type {
+  AnalysisResult,
+  DomainHistory,
+  PolicyAIAnalysis,
+  EcosystemMap,
+  ChatMessage,
+  PolicyTextResponse,
+  PolicyDiscoveryDebug,
+} from './types';
 
 const API = axios.create({ baseURL: '/api', timeout: 90000 });
 
@@ -15,6 +23,16 @@ export async function getDomainHistory(domain: string): Promise<DomainHistory> {
 
 export async function getRecentDomains(): Promise<{ domains: Array<{ domain: string; score: number; grade: string; analyzed_at: string }> }> {
   const { data } = await API.get('/recent');
+  return data;
+}
+
+export async function getPolicyText(domain: string): Promise<PolicyTextResponse> {
+  const { data } = await API.get(`/policy/text/${domain}`);
+  return data;
+}
+
+export async function getPolicyDiscoveryDebug(domain: string): Promise<PolicyDiscoveryDebug> {
+  const { data } = await API.get('/debug/policy-discovery', { params: { domain } });
   return data;
 }
 

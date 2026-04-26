@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { AnalysisResult } from '../../types';
 import { RadialBarChart, RadialBar, ResponsiveContainer } from 'recharts';
+import DiscoveryDebugPanel from './DiscoveryDebugPanel';
 
 interface Props {
   result: AnalysisResult;
@@ -194,6 +195,8 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
               ↺ Force Re-analyze
             </button>
           )}
+
+          {result.domain && <DiscoveryDebugPanel domain={result.domain} />}
         </div>
       </div>
 
