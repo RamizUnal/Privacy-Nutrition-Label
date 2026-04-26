@@ -72,6 +72,16 @@ class ScoreBreakdown:
     penalties: List[Dict]
     bonuses: List[Dict]
 
+    # Per-dimension baseline (the starting value before penalties/bonuses are
+    # applied). For dimensions like rights/transparency/retention this is
+    # *computed* from sub-scores rather than a fixed 100, so the UI needs it
+    # to make the math (baseline − Σ penalty + Σ bonus = score) add up.
+    baselines: Dict[str, int]
+    # Whether the final dimension score was clamped to 0 or 100. When true,
+    # the displayed score does not equal baseline − penalties + bonuses
+    # because the value would have fallen outside the 0–100 range.
+    clamped: Dict[str, str]
+
 
 def _grade(score: int) -> str:
     if score >= 85: return "A"
@@ -122,6 +132,8 @@ def calculate_score(
             weights={},
             penalties=[{"reason": "No privacy policy found", "penalty": 0}],
             bonuses=[],
+            baselines={},
+            clamped={},
         )
 
     # ── 1. DATA COLLECTION SCORE (0–100) ─────────────────────────────────────
@@ -151,8 +163,18 @@ def calculate_score(
         elif dt.sensitivity == "high":
             high_count += 1
             data_score -= 4
+            penalties.append({
+                "dimension": "data_collection",
+                "reason": f"High-sensitivity data collected: {dt.name}",
+                "penalty": 4,
+            })
         elif dt.sensitivity == "medium":
             data_score -= 1
+            penalties.append({
+                "dimension": "data_collection",
+                "reason": f"Medium-sensitivity data collected: {dt.name}",
+                "penalty": 1,
+            })
 
     # Penalize if many types are shared
     shared_count = sum(1 for dt in data_types if dt.shared)
@@ -173,7 +195,13 @@ def calculate_score(
     if tp_count == 0:
         bonuses.append({"dimension": "sharing", "reason": "No third-party sharing detected", "bonus": 5})
     elif tp_count <= 5:
-        sharing_score -= tp_count * 3
+        deduction = tp_count * 3
+        sharing_score -= deduction
+        penalties.append({
+            "dimension": "sharing",
+            "reason": f"{tp_count} third-party data recipient(s)",
+            "penalty": deduction,
+        })
     elif tp_count <= 15:
         sharing_score -= 15 + (tp_count - 5) * 4
         penalties.append({"dimension": "sharing", "reason": f"{tp_count} third-party data recipients", "penalty": 15 + (tp_count - 5) * 4})
@@ -289,8 +317,10 @@ def calculate_score(
         penalties.append({"dimension": "technical", "reason": f"{tracker_count} trackers detected on website", "penalty": 30})
     elif tracker_count > 10:
         technical_score -= 18
+        penalties.append({"dimension": "technical", "reason": f"{tracker_count} trackers detected on website", "penalty": 18})
     elif tracker_count > 5:
         technical_score -= 10
+        penalties.append({"dimension": "technical", "reason": f"{tracker_count} trackers detected on website", "penalty": 10})
 
     if tracker_result and tracker_result.fingerprinting_detected:
         technical_score -= 25
@@ -380,6 +410,97 @@ def calculate_score(
                 "bonus": 10,
             })
 
+    # ── Capture per-dimension baselines BEFORE bonuses are applied ────────────
+    # The baseline is what the dimension *started* at — fixed 100 for some
+    # dimensions, computed from sub-scores for others. We snapshot it here so
+    # the UI can show "baseline N − penalties + bonuses = score".
+    raw_dim_totals = {
+        "data_collection": data_score,
+        "sharing": sharing_score,
+        "transparency": transparency_score,
+        "rights": rights_score,
+        "retention": retention_score,
+        "dark_patterns": dark_patterns_score,
+        "technical": technical_score,
+        "mismatch": m_score,
+    }
+    pen_by_dim: Dict[str, int] = {}
+    for p in penalties:
+        d = p.get("dimension")
+        if d:
+            pen_by_dim[d] = pen_by_dim.get(d, 0) + (p.get("penalty") or 0)
+    # baseline = current_score + total_penalties_applied  (bonuses not yet applied)
+    # Special cases:
+    #   transparency: baseline is sentiment.transparency_score (penalties not subtracted from it directly,
+    #     they're tracked but the score is overwritten by sentiment). We set baseline to that value.
+    #   rights: baseline is the avg of GDPR+CCPA scores (penalties not subtracted from the dim either).
+    #   retention: baseline is the rating-mapped score; only the indefinite-retention penalty actually
+    #     subtracts from it.
+    baselines: Dict[str, int] = {
+        "data_collection": min(100, raw_dim_totals["data_collection"] + pen_by_dim.get("data_collection", 0)),
+        "sharing":         min(100, raw_dim_totals["sharing"] + pen_by_dim.get("sharing", 0)),
+        "transparency":    sentiment.transparency_score,
+        "rights":          int((rights.gdpr_score + rights.ccpa_score) / 2),
+        "retention":       RETENTION_RATING_SCORE.get(retention.overall_rating, 0),
+        "dark_patterns":   100,
+        "technical":       min(100, raw_dim_totals["technical"] + pen_by_dim.get("technical", 0)),
+        "mismatch":        (mismatch_analysis.get("mismatch_score", 50) if mismatch_analysis else 50),
+    }
+
+    # ── Apply bonuses to their dimension scores (capped at 100) ───────────────
+    # Bonuses are recorded throughout the function as informational signals;
+    # here we actually fold them into the dimension score so the breakdown
+    # math is transparent: final = baseline − Σ penalties + Σ bonuses (0–100).
+    _dim_score_refs = {
+        "data_collection": data_score,
+        "sharing": sharing_score,
+        "transparency": transparency_score,
+        "rights": rights_score,
+        "retention": retention_score,
+        "dark_patterns": dark_patterns_score,
+        "technical": technical_score,
+    }
+    for b in bonuses:
+        d = b.get("dimension")
+        if d in _dim_score_refs:
+            _dim_score_refs[d] = min(100, _dim_score_refs[d] + (b.get("bonus") or 0))
+
+    data_score          = _dim_score_refs["data_collection"]
+    sharing_score       = _dim_score_refs["sharing"]
+    transparency_score  = _dim_score_refs["transparency"]
+    rights_score        = _dim_score_refs["rights"]
+    retention_score     = _dim_score_refs["retention"]
+    dark_patterns_score = _dim_score_refs["dark_patterns"]
+    technical_score     = _dim_score_refs["technical"]
+
+    # ── Detect clamping (when raw math falls outside 0–100) ───────────────────
+    # If baseline − penalties + bonuses lands above 100 or below 0, the score
+    # is clamped. The UI uses this to add a "(clamped to 0/100)" note so the
+    # user understands why the displayed numbers don't add up arithmetically.
+    bonus_by_dim: Dict[str, int] = {}
+    for b in bonuses:
+        d = b.get("dimension")
+        if d:
+            bonus_by_dim[d] = bonus_by_dim.get(d, 0) + (b.get("bonus") or 0)
+
+    final_scores = {
+        "data_collection": data_score,
+        "sharing": sharing_score,
+        "transparency": transparency_score,
+        "rights": rights_score,
+        "retention": retention_score,
+        "dark_patterns": dark_patterns_score,
+        "technical": technical_score,
+        "mismatch": m_score,
+    }
+    clamped: Dict[str, str] = {}
+    for dim, base in baselines.items():
+        raw = base - pen_by_dim.get(dim, 0) + bonus_by_dim.get(dim, 0)
+        if raw < 0 and final_scores[dim] == 0:
+            clamped[dim] = "floor"   # would have gone below 0
+        elif raw > 100 and final_scores[dim] == 100:
+            clamped[dim] = "ceiling" # would have gone above 100
+
     # ── Weighted overall score ─────────────────────────────────────────────────
     weights = {
         "data_collection": 0.18,
@@ -430,6 +551,10 @@ def calculate_score(
         technical_score=technical_score,
         mismatch_score=m_score,
         weights=weights,
-        penalties=penalties[:20],
-        bonuses=bonuses[:10],
+        # Don't truncate per-dimension penalties/bonuses: the UI now shows them
+        # grouped by dimension and needs the full list for the math to add up.
+        penalties=penalties,
+        bonuses=bonuses,
+        baselines=baselines,
+        clamped=clamped,
     )

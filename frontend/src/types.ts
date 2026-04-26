@@ -262,6 +262,10 @@ export interface ScoreBreakdown {
   technical: number;
   mismatch: number;
   weights: Record<string, number>;
+  /** Per-dimension starting value before penalties/bonuses are applied. */
+  baselines?: Record<string, number>;
+  /** "floor" or "ceiling" if the dimension was clamped to 0 or 100. */
+  clamped?: Record<string, 'floor' | 'ceiling'>;
 }
 
 export interface Penalty {
