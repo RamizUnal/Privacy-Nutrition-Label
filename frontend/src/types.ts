@@ -246,6 +246,15 @@ export interface MismatchAnalysis {
   summary: string;
 }
 
+export interface AIExtractionMeta {
+  enabled: boolean;
+  used: boolean;
+  reason?: string;
+  data_categories_source?: 'ai' | 'fallback_regex';
+  third_parties_source?: 'ai' | 'fallback_regex';
+  policy_chars_sent?: number;
+}
+
 export interface AnalysisResult {
   cached: boolean;
   domain: string;
@@ -277,6 +286,7 @@ export interface AnalysisResult {
   trackers: TrackerResult;
   dynamic_crawling?: DynamicCrawlingResult;
   mismatch_analysis?: MismatchAnalysis;
+  ai_extraction?: AIExtractionMeta | null;
 }
 
 export interface PolicyTextResponse {

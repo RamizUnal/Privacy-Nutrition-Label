@@ -100,8 +100,8 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
         {activeTab === 'overview'      && <NutritionFacts result={result} onTabChange={setActiveTab} />}
         {activeTab === 'dynamic'       && <DynamicScan dynamic={result.dynamic_crawling} />}
         {activeTab === 'mismatch'      && <MismatchPanel mismatch={result.mismatch_analysis} />}
-        {activeTab === 'data'          && <DataTypes dataTypes={result.data_types || []} />}
-        {activeTab === 'sharing'       && <ThirdParties analysis={result.third_parties} />}
+        {activeTab === 'data'          && <DataTypes dataTypes={result.data_types || []} result={result} />}
+        {activeTab === 'sharing'       && <ThirdParties analysis={result.third_parties} result={result} />}
         {activeTab === 'trackers'      && <Trackers trackers={result.trackers} />}
         {activeTab === 'cookies'       && <Cookies trackers={result.trackers} />}
         {activeTab === 'retention'     && <Retention retention={result.retention} />}

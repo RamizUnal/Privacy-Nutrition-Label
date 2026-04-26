@@ -34,6 +34,7 @@ from analyzer.policy_analyzer import analyze_policy
 from tracker.detector import detect_trackers_from_html
 from scoring.privacy_scorer import calculate_score
 from ai.policy_ai import analyze_policy_ai, stream_chat_response
+from ai.policy_extraction import ai_policy_extraction_enabled, extract_policy_entities_ai
 from ai.third_party_researcher import research_ecosystem
 from ai.claude_client import is_available as ai_available
 from tracker.stateful_adapter import run_integrated_state_crawl
@@ -116,6 +117,12 @@ def _dc(obj) -> Any:
     return obj
 
 
+def _cached_result_matches_enabled_features(result_json: dict) -> bool:
+    if ai_policy_extraction_enabled() and not result_json.get("ai_extraction"):
+        return False
+    return True
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
@@ -146,7 +153,7 @@ async def analyze_website(
     # ── Check cache unless force refresh ──────────────────────────────────────
     if not req.force_refresh:
         cached = await get_latest_analysis(db, domain)
-        if cached and cached.result_json:
+        if cached and cached.result_json and _cached_result_matches_enabled_features(cached.result_json):
             return {
                 "cached": True,
                 "domain": domain,
@@ -249,6 +256,17 @@ async def analyze_website(
                 domain=domain,
             )
             analysis_dict, data_types, retention, sentiment, dark_patterns, rights, third_parties = analysis_tuple
+            ai_entities = await extract_policy_entities_ai(
+                domain=domain,
+                policy_text=policy_text,
+                fallback_data_types=data_types,
+                fallback_third_parties=third_parties,
+            )
+            data_types = ai_entities.data_types
+            third_parties = ai_entities.third_parties
+            analysis_dict["data_types"] = _dc(data_types)
+            analysis_dict["third_parties"] = _dc(third_parties)
+            analysis_dict["ai_extraction"] = ai_entities.meta
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
@@ -545,6 +563,7 @@ def _build_result(url, domain, crawl, analysis, tracker_result, score, dynamic_r
         "dark_patterns": analysis.get("dark_patterns", {}),
         "rights": analysis.get("rights", {}),
         "third_parties": analysis.get("third_parties", {}),
+        "ai_extraction": analysis.get("ai_extraction"),
         "trackers": tr,
         "dynamic_crawling": dynamic_result,
         "mismatch_analysis": mismatch_result,

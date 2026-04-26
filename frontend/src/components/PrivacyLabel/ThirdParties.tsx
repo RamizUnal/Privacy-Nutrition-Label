@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
-import type { ThirdPartyAnalysis, ThirdPartyEntry } from '../../types';
+import type { AnalysisResult, ThirdPartyAnalysis, ThirdPartyEntry } from '../../types';
+import PolicyTextPanel from './PolicyTextPanel';
 
-interface Props { analysis: ThirdPartyAnalysis; }
+interface Props {
+  analysis: ThirdPartyAnalysis;
+  result: AnalysisResult;
+}
 
 const TRUST_COLORS: Record<string, string> = {
   trusted: '#00e676', moderate: '#ffd740',
@@ -15,6 +19,31 @@ const PURPOSE_LABELS: Record<string, string> = {
   hosting: '☁️ Hosting', legal_compliance: '⚖️ Legal',
 };
 
+function ExtractionSource({ result }: { result: AnalysisResult }) {
+  const source = result.ai_extraction?.third_parties_source;
+  const isAI = source === 'ai';
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${
+      isAI
+        ? 'border-violet-500/30 bg-violet-950/15'
+        : 'border-white/10 bg-panel'
+    }`}>
+      <div className="font-mono text-xs uppercase tracking-wider text-white/35">
+        Extraction source
+      </div>
+      <div className={`mt-1 font-mono text-sm ${isAI ? 'text-violet-300' : 'text-white/45'}`}>
+        {isAI ? 'Claude AI with policy quotes' : 'Regex/brand-list fallback'}
+      </div>
+      {result.ai_extraction?.reason && (
+        <div className="mt-1 font-mono text-[11px] text-white/30">
+          {result.ai_extraction.reason}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TrustBar({ score }: { score: number }) {
   const color = score >= 70 ? '#00e676' : score >= 50 ? '#ffd740' : score >= 30 ? '#ff9100' : '#ff3b3b';
   return (
@@ -27,18 +56,43 @@ function TrustBar({ score }: { score: number }) {
   );
 }
 
-export default function ThirdParties({ analysis }: Props) {
+function EvidenceQuote({ text }: { text: string }) {
+  return (
+    <div className="mt-2 rounded bg-black/30 border border-white/5 p-2">
+      <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-white/25">
+        Policy evidence
+      </div>
+      <p className="text-xs font-mono text-white/40 leading-relaxed break-words">
+        {text}
+      </p>
+    </div>
+  );
+}
+
+export default function ThirdParties({ analysis, result }: Props) {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'trust' | 'name'>('trust');
 
-  if (!analysis) return <div className="text-center py-16 text-white/30 font-mono text-sm">No third-party data available.</div>;
+  if (!analysis) {
+    return (
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)] gap-6 items-start">
+        <div className="text-center py-16 text-white/30 font-mono text-sm">No third-party data available.</div>
+        <div className="xl:sticky xl:top-32">
+          <PolicyTextPanel result={result} />
+        </div>
+      </div>
+    );
+  }
 
   const parties = (analysis.parties || [])
     .filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => sortBy === 'trust' ? a.trust_score - b.trust_score : a.name.localeCompare(b.name));
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)] gap-6 items-start">
+      <div className="space-y-6">
+      <ExtractionSource result={result} />
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -145,6 +199,11 @@ export default function ThirdParties({ analysis }: Props) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-sans text-sm font-semibold text-white/85">{party.name}</span>
+                      {party.category === 'Unnamed recipient category' && (
+                        <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-white/5 text-white/40 border border-white/10">
+                          Unnamed
+                        </span>
+                      )}
                       {party.is_data_broker && (
                         <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-red-900/30 text-red-400 border border-red-800/40">
                           Data Broker
@@ -191,13 +250,7 @@ export default function ThirdParties({ analysis }: Props) {
                   </div>
                 </div>
 
-                {party.evidence.length > 0 && (
-                  <div className="mt-2 p-2 rounded bg-black/30 border border-white/5">
-                    <p className="text-xs font-mono text-white/30 leading-relaxed break-words">
-                      {party.evidence[0]}
-                    </p>
-                  </div>
-                )}
+                {party.evidence.length > 0 && <EvidenceQuote text={party.evidence[0]} />}
               </div>
             ))}
           </div>
@@ -209,6 +262,11 @@ export default function ThirdParties({ analysis }: Props) {
             : 'No specific third parties identified in the policy.'}
         </div>
       )}
+      </div>
+
+      <div className="xl:sticky xl:top-32">
+        <PolicyTextPanel result={result} />
+      </div>
     </div>
   );
 }
