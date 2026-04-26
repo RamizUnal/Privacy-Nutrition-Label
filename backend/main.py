@@ -34,7 +34,11 @@ from analyzer.policy_analyzer import analyze_policy
 from tracker.detector import detect_trackers_from_html
 from scoring.privacy_scorer import calculate_score
 from ai.policy_ai import analyze_policy_ai, stream_chat_response
-from ai.policy_extraction import ai_policy_extraction_enabled, extract_policy_entities_ai
+from ai.policy_extraction import (
+    AI_POLICY_EXTRACTION_VERSION,
+    ai_policy_extraction_enabled,
+    extract_policy_entities_ai,
+)
 from ai.third_party_researcher import research_ecosystem
 from ai.claude_client import is_available as ai_available
 from tracker.stateful_adapter import run_integrated_state_crawl
@@ -118,8 +122,12 @@ def _dc(obj) -> Any:
 
 
 def _cached_result_matches_enabled_features(result_json: dict) -> bool:
-    if ai_policy_extraction_enabled() and not result_json.get("ai_extraction"):
-        return False
+    if ai_policy_extraction_enabled():
+        meta = result_json.get("ai_extraction") or {}
+        if meta.get("version") != AI_POLICY_EXTRACTION_VERSION:
+            return False
+        if meta.get("used") is not True:
+            return False
     return True
 
 

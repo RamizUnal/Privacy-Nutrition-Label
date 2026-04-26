@@ -25,6 +25,8 @@ from analyzer.third_party_analyzer import (
 )
 from ai.claude_client import FAST_MODEL, acomplete
 
+AI_POLICY_EXTRACTION_VERSION = 4
+
 
 @dataclass
 class AIExtractionResult:
@@ -120,11 +122,35 @@ def _taxonomy_prompt() -> str:
     return "\n".join(rows)
 
 
-def _quote_list(value: Any, limit: int = 3) -> List[str]:
+def _normalize_for_match(text: str) -> str:
+    return " ".join((text or "").split()).lower()
+
+
+def _quote_appears_in_text(quote: str, source_text: str) -> bool:
+    quote_norm = _normalize_for_match(quote.strip(" .…"))
+    source_norm = _normalize_for_match(source_text)
+    if not quote_norm:
+        return False
+    if quote_norm in source_norm:
+        return True
+
+    words = quote_norm.split()
+    if len(words) < 6:
+        return False
+    window = min(10, len(words))
+    for idx in range(0, len(words) - window + 1):
+        if " ".join(words[idx:idx + window]) in source_norm:
+            return True
+    return False
+
+
+def _quote_list(value: Any, limit: int = 3, source_text: str | None = None) -> List[str]:
     quotes = []
     for quote in _as_list(value):
-        if len(quote) > 500:
-            quote = quote[:500].rsplit(" ", 1)[0].strip()
+        if len(quote) > 260:
+            quote = quote[:260].rsplit(" ", 1)[0].strip()
+        if source_text and not _quote_appears_in_text(quote, source_text):
+            continue
         if quote and quote not in quotes:
             quotes.append(quote)
         if len(quotes) >= limit:
@@ -132,7 +158,7 @@ def _quote_list(value: Any, limit: int = 3) -> List[str]:
     return quotes
 
 
-def _build_ai_data_types(items: Any) -> List[DetectedDataType]:
+def _build_ai_data_types(items: Any, source_text: str) -> List[DetectedDataType]:
     if not isinstance(items, list):
         return []
 
@@ -143,7 +169,7 @@ def _build_ai_data_types(items: Any) -> List[DetectedDataType]:
             continue
         cat_id = str(item.get("category_id", "")).strip()
         cat = DATA_TAXONOMY.get(cat_id)
-        evidence = _quote_list(item.get("evidence"))
+        evidence = _quote_list(item.get("evidence"), source_text=source_text)
         if not cat or cat_id in seen or not evidence:
             continue
         seen.add(cat_id)
@@ -177,7 +203,7 @@ def _trust_label(score: int) -> str:
     return "unknown"
 
 
-def _build_ai_third_parties(payload: Dict[str, Any]) -> ThirdPartyAnalysis | None:
+def _build_ai_third_parties(payload: Dict[str, Any], source_text: str) -> ThirdPartyAnalysis | None:
     if not isinstance(payload, dict):
         return None
 
@@ -196,7 +222,7 @@ def _build_ai_third_parties(payload: Dict[str, Any]) -> ThirdPartyAnalysis | Non
             key = name.lower()
             if key in seen:
                 continue
-            evidence = _quote_list(item.get("evidence"), limit=2)
+            evidence = _quote_list(item.get("evidence"), limit=2, source_text=source_text)
             if not evidence:
                 continue
             seen.add(key)
@@ -227,7 +253,7 @@ def _build_ai_third_parties(payload: Dict[str, Any]) -> ThirdPartyAnalysis | Non
             if not isinstance(item, dict):
                 continue
             label = " ".join(str(item.get("label", "")).split()).strip()
-            evidence = _quote_list(item.get("evidence"), limit=2)
+            evidence = _quote_list(item.get("evidence"), limit=2, source_text=source_text)
             if not label or not evidence:
                 continue
             purposes = _normalize_purposes(item.get("purposes"))
@@ -290,7 +316,7 @@ def _build_ai_third_parties(payload: Dict[str, Any]) -> ThirdPartyAnalysis | Non
         count=total,
         named_count=named_count,
         unnamed_count=unnamed_count,
-        parties=sorted(parties, key=lambda p: p.trust_score)[:30],
+        parties=sorted(parties, key=lambda p: p.trust_score),
         sharing_purposes=sharing_purposes,
         data_sold=data_sold,
         cross_border_transfers=cross_border,
@@ -302,24 +328,15 @@ def _build_ai_third_parties(payload: Dict[str, Any]) -> ThirdPartyAnalysis | Non
     )
 
 
-async def extract_policy_entities_ai(
+def _build_extraction_prompt(
     *,
     domain: str,
-    policy_text: str,
-    fallback_data_types: List[DetectedDataType],
-    fallback_third_parties: ThirdPartyAnalysis,
-) -> AIExtractionResult:
-    if not _ai_extraction_enabled():
-        return AIExtractionResult(
-            data_types=fallback_data_types,
-            third_parties=fallback_third_parties,
-            meta={"enabled": False, "used": False, "reason": "disabled_or_unconfigured"},
-        )
-
-    max_chars = int(os.getenv("AI_POLICY_EXTRACTION_MAX_CHARS", "50000"))
-    policy_excerpt = policy_text[:max_chars]
-
-    prompt = f"""
+    policy_excerpt: str,
+    max_data_categories: int,
+    max_evidence_quotes: int,
+    max_string_items: int,
+) -> str:
+    return f"""
 Analyze this privacy policy for {domain}.
 
 Use ONLY the allowed data category IDs below. Do not invent category IDs.
@@ -332,6 +349,17 @@ and obvious first-party/parent-company references unless the policy clearly says
 is shared with separate affiliates or external recipients.
 
 Every item MUST include exact short quotes copied from the policy text.
+Keep the output compact:
+- Return every supported data category that has direct evidence; there are at most {max_data_categories} allowed categories.
+- Return every named third-party recipient mentioned as receiving user data.
+- Return every generic recipient category mentioned as receiving user data, such as service providers, affiliates, advertisers, analytics providers, payment processors, law enforcement, or cloud providers.
+- Do not stop at the most important examples. Include all unique recipients that have evidence.
+- Each evidence array must contain {max_evidence_quotes} short quote(s), each under 180 characters.
+- shared_with and data_types_shared may contain at most {max_string_items} short strings.
+- purposes must only use these enum values:
+  analytics, advertising, payment, customer_support, email_marketing, social_media, hosting, legal_compliance.
+- If the same recipient is mentioned repeatedly, include it once with the best evidence quote.
+- Do not include markdown, comments, explanations, or trailing commas.
 
 ALLOWED DATA CATEGORIES:
 {_taxonomy_prompt()}
@@ -341,7 +369,7 @@ Return ONLY valid JSON with this schema:
   "data_categories": [
     {{
       "category_id": "contact",
-      "evidence": ["exact quote from policy"],
+      "evidence": ["exact short quote from policy"],
       "shared": true,
       "shared_with": ["service providers", "advertising partners"],
       "purposes": ["analytics", "advertising", "payment", "customer_support", "email_marketing", "social_media", "hosting", "legal_compliance"]
@@ -352,7 +380,7 @@ Return ONLY valid JSON with this schema:
       {{
         "name": "Stripe",
         "category": "Payment Processing",
-        "evidence": ["exact quote from policy"],
+        "evidence": ["exact short quote from policy"],
         "data_types_shared": ["payment information"],
         "purposes": ["payment"],
         "cross_border_transfer": false,
@@ -362,7 +390,7 @@ Return ONLY valid JSON with this schema:
     "unnamed_recipients": [
       {{
         "label": "service providers",
-        "evidence": ["exact quote from policy"],
+        "evidence": ["exact short quote from policy"],
         "purposes": ["hosting"]
       }}
     ],
@@ -376,33 +404,98 @@ POLICY TEXT:
 {policy_excerpt}
 """.strip()
 
-    try:
-        raw = await acomplete(
-            prompt,
-            system=(
-                "You extract structured privacy-policy facts. Return only JSON. "
-                "Use exact quotes from the policy as evidence."
-            ),
-            model=FAST_MODEL,
-            max_tokens=4500,
+
+async def extract_policy_entities_ai(
+    *,
+    domain: str,
+    policy_text: str,
+    fallback_data_types: List[DetectedDataType],
+    fallback_third_parties: ThirdPartyAnalysis,
+) -> AIExtractionResult:
+    if not _ai_extraction_enabled():
+        return AIExtractionResult(
+            data_types=fallback_data_types,
+            third_parties=fallback_third_parties,
+            meta={
+                "enabled": False,
+                "used": False,
+                "version": AI_POLICY_EXTRACTION_VERSION,
+                "reason": "disabled_or_unconfigured",
+            },
         )
+
+    max_chars = int(os.getenv("AI_POLICY_EXTRACTION_MAX_CHARS", "50000"))
+    policy_excerpt = policy_text[:max_chars]
+
+    try:
+        all_data_categories = len(DATA_TAXONOMY)
+        attempts = [
+            {
+                "name": "standard",
+                "max_data_categories": all_data_categories,
+                "max_evidence_quotes": 1,
+                "max_string_items": 4,
+                "max_tokens": 8000,
+            },
+            {
+                "name": "compact_retry",
+                "max_data_categories": all_data_categories,
+                "max_evidence_quotes": 1,
+                "max_string_items": 2,
+                "max_tokens": 6000,
+            },
+        ]
+        raw = ""
+        data = None
+        attempt_name = attempts[-1]["name"]
+        for attempt in attempts:
+            attempt_name = attempt["name"]
+            raw = await acomplete(
+                _build_extraction_prompt(
+                    domain=domain,
+                    policy_excerpt=policy_excerpt,
+                    max_data_categories=attempt["max_data_categories"],
+                    max_evidence_quotes=attempt["max_evidence_quotes"],
+                    max_string_items=attempt["max_string_items"],
+                ),
+                system=(
+                    "You extract structured privacy-policy facts. Return only JSON. "
+                    "Use exact quotes from the policy as evidence."
+                ),
+                model=FAST_MODEL,
+                max_tokens=attempt["max_tokens"],
+            )
+            data = _extract_json_object(raw or "")
+            if data:
+                break
     except Exception as exc:
         return AIExtractionResult(
             data_types=fallback_data_types,
             third_parties=fallback_third_parties,
-            meta={"enabled": True, "used": False, "reason": f"ai_error:{type(exc).__name__}"},
+            meta={
+                "enabled": True,
+                "used": False,
+                "version": AI_POLICY_EXTRACTION_VERSION,
+                "reason": f"ai_error:{type(exc).__name__}",
+            },
         )
 
-    data = _extract_json_object(raw or "")
     if not data:
         return AIExtractionResult(
             data_types=fallback_data_types,
             third_parties=fallback_third_parties,
-            meta={"enabled": True, "used": False, "reason": "invalid_json"},
+            meta={
+                "enabled": True,
+                "used": False,
+                "version": AI_POLICY_EXTRACTION_VERSION,
+                "reason": "invalid_json",
+                "attempt": attempt_name,
+                "raw_response_chars": len(raw or ""),
+            },
         )
 
-    ai_data_types = _build_ai_data_types(data.get("data_categories"))
-    ai_third_parties = _build_ai_third_parties(data.get("third_parties", {}))
+    ai_data_types = _build_ai_data_types(data.get("data_categories"), policy_excerpt)
+    ai_third_parties = _build_ai_third_parties(data.get("third_parties", {}), policy_excerpt)
 
     used_data = bool(ai_data_types)
     used_parties = ai_third_parties is not None
@@ -413,8 +506,10 @@ POLICY TEXT:
         meta={
             "enabled": True,
             "used": used_data or used_parties,
+            "version": AI_POLICY_EXTRACTION_VERSION,
             "data_categories_source": "ai" if used_data else "fallback_regex",
             "third_parties_source": "ai" if used_parties else "fallback_regex",
             "policy_chars_sent": len(policy_excerpt),
+            "attempt": attempt_name,
         },
     )
