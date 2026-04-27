@@ -12,11 +12,26 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
 from analyzer.data_categories import DATA_TAXONOMY, DetectedDataType
+from analyzer.dark_pattern_detector import (
+    DARK_PATTERN_DEFINITIONS,
+    DarkPatternAnalysis,
+    DetectedDarkPattern,
+)
+from analyzer.retention_parser import RetentionAnalysis, RetentionItem
+from analyzer.rights_checker import (
+    CCPA_RIGHTS,
+    COOKIE_COMPLIANCE,
+    GDPR_RIGHTS,
+    OTHER_FRAMEWORKS,
+    RightCoverage,
+    RightsAnalysis,
+)
+from analyzer.sentiment_analyzer import ACCOUNTABILITY_PATTERNS, SentimentResult
 from analyzer.third_party_analyzer import (
     SHARING_PURPOSES,
     ThirdPartyAnalysis,
@@ -25,13 +40,17 @@ from analyzer.third_party_analyzer import (
 )
 from ai.claude_client import FAST_MODEL, acomplete
 
-AI_POLICY_EXTRACTION_VERSION = 4
+AI_POLICY_EXTRACTION_VERSION = 5
 
 
 @dataclass
 class AIExtractionResult:
     data_types: List[DetectedDataType]
     third_parties: ThirdPartyAnalysis
+    retention: RetentionAnalysis
+    dark_patterns: DarkPatternAnalysis
+    rights: RightsAnalysis
+    sentiment: SentimentResult
     meta: Dict[str, Any]
 
 
@@ -83,6 +102,26 @@ def _as_list(value: Any) -> List[str]:
 
 def _as_bool(value: Any, default: bool = False) -> bool:
     return value if isinstance(value, bool) else default
+
+
+def _as_int(value: Any, default: int = 0, *, min_value: int = 0, max_value: int = 100) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        parsed = int(value)
+    except Exception:
+        parsed = default
+    return max(min_value, min(max_value, parsed))
+
+
+def _as_float(value: Any, default: float = 0.0, *, min_value: float = 0.0, max_value: float = 1.0) -> float:
+    if isinstance(value, bool):
+        return default
+    try:
+        parsed = float(value)
+    except Exception:
+        parsed = default
+    return max(min_value, min(max_value, parsed))
 
 
 def _normalize_purpose(value: str) -> str:
@@ -328,6 +367,294 @@ def _build_ai_third_parties(payload: Dict[str, Any], source_text: str) -> ThirdP
     )
 
 
+def _retention_rating(days: int | None, period_type: str, is_vague: bool) -> tuple[str, str]:
+    if is_vague or period_type == "vague":
+        return "very_poor", "No specific period"
+    if period_type == "event_based":
+        return "good", "Event-based deletion"
+    if days is None:
+        return "unknown", "Unknown"
+    if days <= 30:
+        return "excellent", "<= 30 days"
+    if days <= 180:
+        return "good", "1-6 months"
+    if days <= 365:
+        return "fair", "6-12 months"
+    if days <= 730:
+        return "poor", "1-2 years"
+    return "very_poor", f">{days // 365} years"
+
+
+def _overall_retention_rating(items: List[RetentionItem]) -> str:
+    if not items:
+        return "very_poor"
+    if all(item.is_vague for item in items):
+        return "very_poor"
+    scores = {"excellent": 5, "good": 4, "fair": 3, "poor": 2, "very_poor": 1, "unknown": 0}
+    avg = sum(scores.get(item.rating, 0) for item in items) / len(items)
+    if avg >= 4.5:
+        return "excellent"
+    if avg >= 3.5:
+        return "good"
+    if avg >= 2.5:
+        return "fair"
+    if avg >= 1.5:
+        return "poor"
+    return "very_poor"
+
+
+def _build_ai_retention(payload: Any, source_text: str) -> RetentionAnalysis | None:
+    if not isinstance(payload, dict):
+        return None
+
+    items: List[RetentionItem] = []
+    raw_items = payload.get("items", [])
+    if isinstance(raw_items, list):
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            quote_value = item.get("evidence") or item.get("context")
+            evidence = _quote_list(
+                [quote_value] if isinstance(quote_value, str) else quote_value,
+                limit=1,
+                source_text=source_text,
+            )
+            if not evidence:
+                continue
+            period_type = str(item.get("period_type", "")).strip().lower()
+            if period_type not in {"specific", "event_based", "vague"}:
+                continue
+            raw_days = item.get("period_days")
+            period_days = raw_days if isinstance(raw_days, int) and raw_days >= 0 else None
+            period_text = " ".join(str(item.get("period_text", "")).split()).strip()
+            if not period_text:
+                period_text = "Vague / Unspecified" if period_type == "vague" else "Retention period"
+            is_vague = period_type == "vague"
+            rating, label = _retention_rating(period_days, period_type, is_vague)
+            items.append(RetentionItem(
+                context=f"...{evidence[0]}...",
+                period_text=period_text,
+                period_days=period_days,
+                period_type=period_type,
+                rating=rating,
+                rating_label=label,
+                is_vague=is_vague,
+            ))
+            if len(items) >= 20:
+                break
+
+    days_values = [item.period_days for item in items if item.period_days is not None]
+    allowed_overall = {"excellent", "good", "fair", "poor", "very_poor", "unknown"}
+    overall = str(payload.get("overall_rating", "")).strip().lower()
+    if overall not in allowed_overall:
+        overall = _overall_retention_rating(items)
+
+    has_event = any(item.period_type == "event_based" for item in items)
+    has_specific = any(item.period_type == "specific" for item in items)
+    deletion_on_request = _as_bool(payload.get("deletion_on_request")) or any(
+        "request" in item.period_text.lower() or "request" in item.context.lower()
+        for item in items
+    )
+
+    return RetentionAnalysis(
+        items=items,
+        overall_rating=overall,
+        has_vague_retention=any(item.is_vague for item in items),
+        has_indefinite_retention=_as_bool(payload.get("has_indefinite_retention")) or any(
+            "indefinite" in item.period_text.lower() or "indefinite" in item.context.lower()
+            for item in items
+        ),
+        has_event_based_deletion=has_event,
+        has_specific_periods=has_specific,
+        has_deletion_policy=deletion_on_request or has_event,
+        deletion_on_request=deletion_on_request,
+        shortest_days=min(days_values) if days_values else None,
+        longest_days=max(days_values) if days_values else None,
+        storage_limitation_mentioned=_as_bool(payload.get("storage_limitation_mentioned")),
+    )
+
+
+def _dark_pattern_risk(detected: List[DetectedDarkPattern]) -> str:
+    high = sum(1 for item in detected if item.severity == "high")
+    medium = sum(1 for item in detected if item.severity == "medium")
+    low = sum(1 for item in detected if item.severity == "low")
+    if high >= 2:
+        return "critical"
+    if high >= 1:
+        return "high"
+    if medium >= 2:
+        return "medium"
+    if medium + low >= 1:
+        return "low"
+    return "none"
+
+
+def _build_ai_dark_patterns(payload: Any, source_text: str) -> DarkPatternAnalysis | None:
+    if not isinstance(payload, dict):
+        return None
+    definitions = {item["type"]: item for item in DARK_PATTERN_DEFINITIONS}
+    detected: List[DetectedDarkPattern] = []
+    seen = set()
+
+    raw_patterns = payload.get("detected", [])
+    if isinstance(raw_patterns, list):
+        for item in raw_patterns:
+            if not isinstance(item, dict):
+                continue
+            pattern_type = str(item.get("pattern_type", "")).strip()
+            definition = definitions.get(pattern_type)
+            if not definition or pattern_type in seen:
+                continue
+            evidence = _quote_list(item.get("evidence"), limit=2, source_text=source_text)
+            if not evidence:
+                continue
+            seen.add(pattern_type)
+            detected.append(DetectedDarkPattern(
+                pattern_type=pattern_type,
+                name=definition["name"],
+                severity=definition["severity"],
+                description=definition["description"],
+                evidence=[f"...{quote}..." for quote in evidence],
+                gdpr_reference=definition["gdpr_reference"],
+                confidence=round(_as_float(item.get("confidence"), 0.8), 2),
+            ))
+
+    high = sum(1 for item in detected if item.severity == "high")
+    medium = sum(1 for item in detected if item.severity == "medium")
+    low = sum(1 for item in detected if item.severity == "low")
+    consent_quality = str(payload.get("consent_mechanism_quality", "")).strip().lower()
+    if consent_quality not in {"good", "adequate", "poor", "unclear"}:
+        consent_quality = "poor" if high else "unclear"
+
+    return DarkPatternAnalysis(
+        detected=detected,
+        count=len(detected),
+        high_severity_count=high,
+        medium_severity_count=medium,
+        low_severity_count=low,
+        overall_risk=_dark_pattern_risk(detected),
+        consent_mechanism_quality=consent_quality,
+    )
+
+
+def _rights_grade(score: int) -> str:
+    if score >= 90:
+        return "A"
+    if score >= 75:
+        return "B"
+    if score >= 55:
+        return "C"
+    if score >= 35:
+        return "D"
+    return "F"
+
+
+def _build_right_map(payload: Any, definitions: Dict[str, Dict[str, Any]], source_text: str) -> Dict[str, RightCoverage]:
+    payload = payload if isinstance(payload, dict) else {}
+    coverage: Dict[str, RightCoverage] = {}
+    for right_id, right_def in definitions.items():
+        item = payload.get(right_id, {})
+        item = item if isinstance(item, dict) else {}
+        evidence_value = item.get("evidence")
+        evidence = _quote_list(
+            [evidence_value] if isinstance(evidence_value, str) else evidence_value,
+            limit=1,
+            source_text=source_text,
+        )
+        covered = _as_bool(item.get("covered")) and bool(evidence)
+        coverage[right_id] = RightCoverage(
+            right_id=right_id,
+            name=right_def["name"],
+            article=right_def["article"],
+            description=right_def["description"],
+            covered=covered,
+            evidence=f"...{evidence[0]}..." if covered else None,
+        )
+    return coverage
+
+
+def _build_ai_rights(payload: Any, source_text: str) -> RightsAnalysis | None:
+    if not isinstance(payload, dict):
+        return None
+
+    gdpr = _build_right_map(payload.get("gdpr"), GDPR_RIGHTS, source_text)
+    ccpa = _build_right_map(payload.get("ccpa"), CCPA_RIGHTS, source_text)
+    gdpr_score = int(sum(1 for right in gdpr.values() if right.covered) / len(GDPR_RIGHTS) * 100)
+    ccpa_score = int(sum(1 for right in ccpa.values() if right.covered) / len(CCPA_RIGHTS) * 100)
+
+    allowed_frameworks = {value["name"] for value in OTHER_FRAMEWORKS.values()}
+    frameworks = [item for item in _as_list(payload.get("frameworks_mentioned")) if item in allowed_frameworks]
+    raw_cookie = payload.get("cookie_compliance", {})
+    raw_cookie = raw_cookie if isinstance(raw_cookie, dict) else {}
+    cookie_compliance = {
+        key: _as_bool(raw_cookie.get(key))
+        for key in COOKIE_COMPLIANCE.keys()
+    }
+
+    return RightsAnalysis(
+        gdpr=gdpr,
+        gdpr_score=gdpr_score,
+        gdpr_grade=_rights_grade(gdpr_score),
+        ccpa=ccpa,
+        ccpa_score=ccpa_score,
+        ccpa_grade=_rights_grade(ccpa_score),
+        frameworks_mentioned=frameworks,
+        cookie_compliance=cookie_compliance,
+        dnt_mentioned=_as_bool(payload.get("dnt_mentioned")) or cookie_compliance.get("dnt_honored", False),
+        dnt_honored=_as_bool(payload.get("dnt_honored")) or cookie_compliance.get("dnt_honored", False),
+        global_privacy_control=_as_bool(payload.get("global_privacy_control")),
+        overall_rights_score=int((gdpr_score + ccpa_score) / 2),
+    )
+
+
+def _build_ai_sentiment(payload: Any, source_text: str, fallback: SentimentResult) -> SentimentResult | None:
+    if not isinstance(payload, dict):
+        return None
+
+    accountability_payload = payload.get("accountability", {})
+    accountability_payload = accountability_payload if isinstance(accountability_payload, dict) else {}
+    accountability = {
+        key: _as_bool(accountability_payload.get(key), fallback.accountability.get(key, False))
+        for key in ACCOUNTABILITY_PATTERNS.keys()
+    }
+    accountability_score = int(sum(1 for value in accountability.values() if value) / len(accountability) * 100)
+
+    overall = str(payload.get("overall_transparency", "")).strip().lower()
+    if overall not in {"high", "medium", "low", "very_low"}:
+        score = _as_int(payload.get("transparency_score"), fallback.transparency_score)
+        if score >= 70:
+            overall = "high"
+        elif score >= 45:
+            overall = "medium"
+        elif score >= 20:
+            overall = "low"
+        else:
+            overall = "very_low"
+
+    named_parties = _as_list(payload.get("named_third_parties")) or fallback.named_third_parties
+    named_parties = list(dict.fromkeys(named_parties))
+
+    return SentimentResult(
+        vagueness_score=_as_int(payload.get("vagueness_score"), fallback.vagueness_score),
+        specificity_score=_as_int(payload.get("specificity_score"), fallback.specificity_score),
+        passive_voice_ratio=_as_float(payload.get("passive_voice_ratio"), fallback.passive_voice_ratio),
+        active_voice_count=_as_int(payload.get("active_voice_count"), fallback.active_voice_count, max_value=10000),
+        passive_voice_count=_as_int(payload.get("passive_voice_count"), fallback.passive_voice_count, max_value=10000),
+        named_third_parties=named_parties,
+        named_third_party_count=len(named_parties),
+        vague_term_examples=_quote_list(payload.get("vague_term_examples"), limit=10, source_text=source_text) or fallback.vague_term_examples,
+        hedging_examples=_quote_list(payload.get("hedging_examples"), limit=10, source_text=source_text) or fallback.hedging_examples,
+        specific_purpose_count=_as_int(payload.get("specific_purpose_count"), fallback.specific_purpose_count, max_value=1000),
+        accountability=accountability,
+        accountability_score=accountability_score,
+        overall_transparency=overall,
+        transparency_score=_as_int(payload.get("transparency_score"), fallback.transparency_score),
+        avg_sentence_length=fallback.avg_sentence_length,
+        readability_rating=fallback.readability_rating,
+        flesch_kincaid_words=fallback.flesch_kincaid_words,
+    )
+
+
 def _build_extraction_prompt(
     *,
     domain: str,
@@ -405,20 +732,147 @@ POLICY TEXT:
 """.strip()
 
 
+def _quality_prompt(domain: str, policy_excerpt: str, *, compact: bool = False) -> str:
+    dark_rows = "\n".join(
+        f"- {item['type']}: {item['name']} | severity={item['severity']} | ref={item['gdpr_reference']}"
+        for item in DARK_PATTERN_DEFINITIONS
+    )
+    gdpr_rows = "\n".join(
+        f"- {key}: {value['name']} ({value['article']})"
+        for key, value in GDPR_RIGHTS.items()
+    )
+    ccpa_rows = "\n".join(
+        f"- {key}: {value['name']} ({value['article']})"
+        for key, value in CCPA_RIGHTS.items()
+    )
+    framework_rows = ", ".join(value["name"] for value in OTHER_FRAMEWORKS.values())
+    accountability_keys = ", ".join(ACCOUNTABILITY_PATTERNS.keys())
+    cookie_keys = ", ".join(COOKIE_COMPLIANCE.keys())
+    max_retention = 8 if compact else 16
+    max_dark = 6 if compact else len(DARK_PATTERN_DEFINITIONS)
+
+    return f"""
+Analyze this privacy policy for {domain} for retention, dark patterns, user rights, and transparency.
+
+Use only facts directly stated in the policy. Every positive finding that needs evidence
+must include exact short quote(s) copied from the policy text. Do not invent quotes.
+
+Allowed dark pattern types:
+{dark_rows}
+
+GDPR right IDs:
+{gdpr_rows}
+
+CCPA/CPRA right IDs:
+{ccpa_rows}
+
+Allowed frameworks: {framework_rows}
+Allowed cookie compliance keys: {cookie_keys}
+Allowed accountability keys: {accountability_keys}
+
+Return ONLY valid JSON with this schema:
+{{
+  "retention": {{
+    "items": [
+      {{
+        "period_text": "90 days",
+        "period_days": 90,
+        "period_type": "specific",
+        "evidence": "exact short quote from policy"
+      }}
+    ],
+    "overall_rating": "excellent|good|fair|poor|very_poor|unknown",
+    "has_indefinite_retention": false,
+    "deletion_on_request": false,
+    "storage_limitation_mentioned": false
+  }},
+  "dark_patterns": {{
+    "detected": [
+      {{
+        "pattern_type": "hidden_opt_out",
+        "evidence": ["exact short quote from policy"],
+        "confidence": 0.8
+      }}
+    ],
+    "consent_mechanism_quality": "good|adequate|poor|unclear"
+  }},
+  "rights": {{
+    "gdpr": {{
+      "access": {{"covered": true, "evidence": "exact short quote from policy"}}
+    }},
+    "ccpa": {{
+      "right_to_know": {{"covered": true, "evidence": "exact short quote from policy"}}
+    }},
+    "frameworks_mentioned": ["LGPD (Brazil)"],
+    "cookie_compliance": {{
+      "consent_required": true,
+      "cookie_categories": true,
+      "httponly_secure": false,
+      "dnt_honored": true
+    }},
+    "dnt_mentioned": true,
+    "dnt_honored": true,
+    "global_privacy_control": true
+  }},
+  "transparency": {{
+    "vagueness_score": 40,
+    "specificity_score": 70,
+    "passive_voice_ratio": 0.25,
+    "active_voice_count": 8,
+    "passive_voice_count": 3,
+    "named_third_parties": ["Stripe"],
+    "vague_term_examples": ["exact vague phrase from policy"],
+    "hedging_examples": ["exact hedging phrase from policy"],
+    "specific_purpose_count": 6,
+    "accountability": {{
+      "dpo_named": false,
+      "dpo_contact": false,
+      "supervisory_authority": false,
+      "legitimate_basis": true,
+      "privacy_by_design": false,
+      "security_measures": true
+    }},
+    "overall_transparency": "high|medium|low|very_low",
+    "transparency_score": 68
+  }}
+}}
+
+Rules:
+- Return at most {max_retention} retention items.
+- Return at most {max_dark} dark pattern findings.
+- Dark patterns must use only allowed pattern_type values.
+- Rights must use only listed GDPR/CCPA IDs.
+- For rights, set covered true only with direct evidence.
+- Do not include markdown, comments, explanations, or trailing commas.
+
+POLICY TEXT:
+{policy_excerpt}
+""".strip()
+
+
 async def extract_policy_entities_ai(
     *,
     domain: str,
     policy_text: str,
     fallback_data_types: List[DetectedDataType],
     fallback_third_parties: ThirdPartyAnalysis,
+    fallback_retention: RetentionAnalysis,
+    fallback_dark_patterns: DarkPatternAnalysis,
+    fallback_rights: RightsAnalysis,
+    fallback_sentiment: SentimentResult,
 ) -> AIExtractionResult:
     if not _ai_extraction_enabled():
         return AIExtractionResult(
             data_types=fallback_data_types,
             third_parties=fallback_third_parties,
+            retention=fallback_retention,
+            dark_patterns=fallback_dark_patterns,
+            rights=fallback_rights,
+            sentiment=fallback_sentiment,
             meta={
                 "enabled": False,
                 "used": False,
+                "complete": False,
                 "version": AI_POLICY_EXTRACTION_VERSION,
                 "reason": "disabled_or_unconfigured",
             },
@@ -426,6 +880,22 @@ async def extract_policy_entities_ai(
 
     max_chars = int(os.getenv("AI_POLICY_EXTRACTION_MAX_CHARS", "50000"))
     policy_excerpt = policy_text[:max_chars]
+
+    data_types = fallback_data_types
+    third_parties = fallback_third_parties
+    retention = fallback_retention
+    dark_patterns = fallback_dark_patterns
+    rights = fallback_rights
+    sentiment = fallback_sentiment
+    errors: List[str] = []
+    attempts_meta: Dict[str, Any] = {}
+    meta: Dict[str, Any] = {
+        "enabled": True,
+        "used": False,
+        "complete": False,
+        "version": AI_POLICY_EXTRACTION_VERSION,
+        "policy_chars_sent": len(policy_excerpt),
+    }
 
     try:
         all_data_categories = len(DATA_TAXONOMY)
@@ -468,48 +938,137 @@ async def extract_policy_entities_ai(
             data = _extract_json_object(raw or "")
             if data:
                 break
+        attempts_meta["entities"] = {
+            "attempt": attempt_name,
+            "raw_response_chars": len(raw or ""),
+        }
     except Exception as exc:
-        return AIExtractionResult(
-            data_types=fallback_data_types,
-            third_parties=fallback_third_parties,
-            meta={
-                "enabled": True,
-                "used": False,
-                "version": AI_POLICY_EXTRACTION_VERSION,
-                "reason": f"ai_error:{type(exc).__name__}",
+        data = None
+        errors.append(f"entities:{type(exc).__name__}")
+
+    if data:
+        data_category_items = data.get("data_categories")
+        ai_data_types = _build_ai_data_types(data_category_items, policy_excerpt)
+        ai_third_parties = _build_ai_third_parties(data.get("third_parties", {}), policy_excerpt)
+
+        if isinstance(data_category_items, list) and (not data_category_items or ai_data_types):
+            data_types = ai_data_types
+            meta["data_categories_source"] = "ai"
+        else:
+            meta["data_categories_source"] = "fallback_regex"
+            errors.append("data_categories:invalid_or_empty")
+
+        if ai_third_parties is not None:
+            third_parties = ai_third_parties
+            meta["third_parties_source"] = "ai"
+        else:
+            meta["third_parties_source"] = "fallback_regex"
+            errors.append("third_parties:invalid_or_empty")
+    else:
+        meta["data_categories_source"] = "fallback_regex"
+        meta["third_parties_source"] = "fallback_regex"
+        errors.append("entities:invalid_json")
+
+    try:
+        quality_attempts = [
+            {
+                "name": "standard",
+                "prompt": _quality_prompt(domain, policy_excerpt, compact=False),
+                "max_tokens": 8000,
             },
-        )
-
-    if not data:
-        return AIExtractionResult(
-            data_types=fallback_data_types,
-            third_parties=fallback_third_parties,
-            meta={
-                "enabled": True,
-                "used": False,
-                "version": AI_POLICY_EXTRACTION_VERSION,
-                "reason": "invalid_json",
-                "attempt": attempt_name,
-                "raw_response_chars": len(raw or ""),
+            {
+                "name": "compact_retry",
+                "prompt": _quality_prompt(domain, policy_excerpt, compact=True),
+                "max_tokens": 6000,
             },
-        )
+        ]
+        raw = ""
+        quality = None
+        quality_attempt_name = quality_attempts[-1]["name"]
+        for attempt in quality_attempts:
+            quality_attempt_name = attempt["name"]
+            raw = await acomplete(
+                attempt["prompt"],
+                system=(
+                    "You extract structured privacy-policy facts. Return only JSON. "
+                    "Use exact quotes from the policy as evidence."
+                ),
+                model=FAST_MODEL,
+                max_tokens=attempt["max_tokens"],
+            )
+            quality = _extract_json_object(raw or "")
+            if quality:
+                break
+        attempts_meta["quality"] = {
+            "attempt": quality_attempt_name,
+            "raw_response_chars": len(raw or ""),
+        }
+    except Exception as exc:
+        quality = None
+        errors.append(f"quality:{type(exc).__name__}")
 
-    ai_data_types = _build_ai_data_types(data.get("data_categories"), policy_excerpt)
-    ai_third_parties = _build_ai_third_parties(data.get("third_parties", {}), policy_excerpt)
+    if quality:
+        ai_retention = _build_ai_retention(quality.get("retention", {}), policy_excerpt)
+        ai_dark_patterns = _build_ai_dark_patterns(quality.get("dark_patterns", {}), policy_excerpt)
+        ai_rights = _build_ai_rights(quality.get("rights", {}), policy_excerpt)
+        ai_sentiment = _build_ai_sentiment(quality.get("transparency", {}), policy_excerpt, fallback_sentiment)
 
-    used_data = bool(ai_data_types)
-    used_parties = ai_third_parties is not None
+        if ai_retention is not None:
+            retention = ai_retention
+            meta["retention_source"] = "ai"
+        else:
+            meta["retention_source"] = "fallback_regex"
+            errors.append("retention:invalid_json")
+
+        if ai_dark_patterns is not None:
+            dark_patterns = ai_dark_patterns
+            meta["dark_patterns_source"] = "ai"
+        else:
+            meta["dark_patterns_source"] = "fallback_regex"
+            errors.append("dark_patterns:invalid_json")
+
+        if ai_rights is not None:
+            rights = ai_rights
+            meta["rights_source"] = "ai"
+        else:
+            meta["rights_source"] = "fallback_regex"
+            errors.append("rights:invalid_json")
+
+        if ai_sentiment is not None:
+            sentiment = ai_sentiment
+            meta["transparency_source"] = "ai"
+        else:
+            meta["transparency_source"] = "fallback_regex"
+            errors.append("transparency:invalid_json")
+    else:
+        meta["retention_source"] = "fallback_regex"
+        meta["dark_patterns_source"] = "fallback_regex"
+        meta["rights_source"] = "fallback_regex"
+        meta["transparency_source"] = "fallback_regex"
+        errors.append("quality:invalid_json")
+
+    source_keys = [
+        "data_categories_source",
+        "third_parties_source",
+        "retention_source",
+        "dark_patterns_source",
+        "rights_source",
+        "transparency_source",
+    ]
+    meta["used"] = any(meta.get(key) == "ai" for key in source_keys)
+    meta["complete"] = all(meta.get(key) == "ai" for key in source_keys)
+    meta["attempts"] = attempts_meta
+    if errors:
+        meta["errors"] = errors[:10]
+        if not meta["used"]:
+            meta["reason"] = ";".join(errors[:4])
 
     return AIExtractionResult(
-        data_types=ai_data_types if used_data else fallback_data_types,
-        third_parties=ai_third_parties if used_parties else fallback_third_parties,
-        meta={
-            "enabled": True,
-            "used": used_data or used_parties,
-            "version": AI_POLICY_EXTRACTION_VERSION,
-            "data_categories_source": "ai" if used_data else "fallback_regex",
-            "third_parties_source": "ai" if used_parties else "fallback_regex",
-            "policy_chars_sent": len(policy_excerpt),
-            "attempt": attempt_name,
-        },
+        data_types=data_types,
+        third_parties=third_parties,
+        retention=retention,
+        dark_patterns=dark_patterns,
+        rights=rights,
+        sentiment=sentiment,
+        meta=meta,
     )

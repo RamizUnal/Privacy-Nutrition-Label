@@ -91,8 +91,10 @@ export async function streamChatResponse(
       if (line.startsWith('data: ')) {
         const data = line.slice(6).trim();
         if (data === '[DONE]') return;
-        if (data && !data.startsWith('[ERROR')) {
-          // Restore escaped newlines
+        if (data.startsWith('[ERROR')) {
+          throw new Error(data.replace(/^\[ERROR:\s?|\]$/g, ''));
+        }
+        if (data) {
           onChunk(data.replace(/\\n/g, '\n'));
         }
       }

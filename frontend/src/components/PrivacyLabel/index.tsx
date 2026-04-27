@@ -104,15 +104,16 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
         {activeTab === 'sharing'       && <ThirdParties analysis={result.third_parties} result={result} />}
         {activeTab === 'trackers'      && <Trackers trackers={result.trackers} runtime={result.runtime_observations} />}
         {activeTab === 'cookies'       && <Cookies trackers={result.trackers} runtime={result.runtime_observations} />}
-        {activeTab === 'retention'     && <Retention retention={result.retention} />}
-        {activeTab === 'dark_patterns' && <DarkPatterns analysis={result.dark_patterns} />}
-        {activeTab === 'rights'        && <Rights rights={result.rights} />}
-        {activeTab === 'transparency'  && <Sentiment sentiment={result.sentiment} />}
+        {activeTab === 'retention'     && <Retention retention={result.retention} result={result} />}
+        {activeTab === 'dark_patterns' && <DarkPatterns analysis={result.dark_patterns} result={result} />}
+        {activeTab === 'rights'        && <Rights rights={result.rights} result={result} />}
+        {activeTab === 'transparency'  && <Sentiment sentiment={result.sentiment} result={result} />}
         {activeTab === 'history'       && <PolicyHistory domain={result.domain} />}
 
         {activeTab === 'ai_insights' && (
           <AIInsights
             domain={result.domain}
+            result={result}
             onLoad={() => getAIInsights(result.domain)}
           />
         )}
@@ -120,12 +121,13 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
         {activeTab === 'ecosystem' && (
           <EcosystemResearch
             domain={result.domain}
-            onLoad={() => getEcosystemResearch(result.domain)}
+            result={result}
+            onLoad={(maxParties) => getEcosystemResearch(result.domain, maxParties)}
           />
         )}
 
         {activeTab === 'assistant' && (
-          <PrivacyAssistant domain={result.domain} />
+          <PrivacyAssistant domain={result.domain} result={result} />
         )}
       </div>
     </div>
