@@ -523,12 +523,18 @@ async def ai_chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
     """Stream a privacy assistant chat response using SSE."""
     cached = await get_latest_analysis(db, req.domain)
     result_json = cached.result_json if (cached and cached.result_json) else {}
+    policy_text = ""
+    if cached and cached.policy_version_id:
+        try:
+            policy_text = await get_policy_text(db, cached.policy_version_id) or ""
+        except Exception:
+            policy_text = ""
 
     conversation = [{"role": m.role, "content": m.content} for m in req.messages]
 
     async def generate():
         try:
-            async for chunk in stream_chat_response(req.domain, result_json, conversation):
+            async for chunk in stream_chat_response(req.domain, result_json, conversation, policy_text):
                 # Escape newlines in SSE data
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"data: {safe_chunk}\n\n"

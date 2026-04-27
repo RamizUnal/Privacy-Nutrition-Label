@@ -433,12 +433,20 @@ export interface AIComplianceGap {
 export interface PolicyAIAnalysis {
   plain_summary: string;
   tldr: string;
+  privacy_posture?: string;
   headline_risks: string[];
   red_flags: AIRedFlag[];
   positive_findings: string[];
   compliance_gaps: AIComplianceGap[];
   user_rights_summary: string;
   recommended_actions: string[];
+  quick_wins?: string[];
+  important_quotes?: Array<{
+    label: string;
+    quote: string;
+    why_it_matters: string;
+  }>;
+  confidence_notes?: string[];
   risk_narrative: string;
   data_story: string;
   ai_score_commentary: string;

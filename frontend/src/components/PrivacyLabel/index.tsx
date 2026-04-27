@@ -113,6 +113,7 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
         {activeTab === 'ai_insights' && (
           <AIInsights
             domain={result.domain}
+            result={result}
             onLoad={() => getAIInsights(result.domain)}
           />
         )}
@@ -120,12 +121,13 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
         {activeTab === 'ecosystem' && (
           <EcosystemResearch
             domain={result.domain}
-            onLoad={() => getEcosystemResearch(result.domain)}
+            result={result}
+            onLoad={(maxParties) => getEcosystemResearch(result.domain, maxParties)}
           />
         )}
 
         {activeTab === 'assistant' && (
-          <PrivacyAssistant domain={result.domain} />
+          <PrivacyAssistant domain={result.domain} result={result} />
         )}
       </div>
     </div>

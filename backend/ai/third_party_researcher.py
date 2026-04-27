@@ -236,6 +236,38 @@ BROWSER_HEADERS = {
 TIMEOUT = httpx.Timeout(15.0, connect=8.0)
 MAX_CHARS = 6000  # max chars to send to Claude per page
 
+GENERIC_PARTY_NAMES = {
+    "service provider",
+    "service providers",
+    "business partner",
+    "business partners",
+    "partner",
+    "partners",
+    "affiliate",
+    "affiliates",
+    "vendor",
+    "vendors",
+    "supplier",
+    "suppliers",
+    "advertiser",
+    "advertisers",
+    "advertising partners",
+    "analytics providers",
+    "payment processors",
+    "cloud providers",
+    "law enforcement",
+    "government authorities",
+    "professional advisors",
+    "third parties",
+    "third party",
+    "unnamed recipient category",
+}
+
+LEGAL_SUFFIX_RE = re.compile(
+    r"\b(inc|incorporated|llc|ltd|limited|corp|corporation|co|company|gmbh|plc|sa|sarl)\b\.?",
+    re.IGNORECASE,
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data models
@@ -284,6 +316,34 @@ class EcosystemMap:
 # ─────────────────────────────────────────────────────────────────────────────
 # Fetching helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _canonical_party_key(name: str) -> str:
+    key = (name or "").lower()
+    key = LEGAL_SUFFIX_RE.sub("", key)
+    key = re.sub(r"[^a-z0-9.]+", " ", key)
+    key = " ".join(key.split())
+    aliases = {
+        "google llc": "google",
+        "google analytics": "google analytics",
+        "facebook": "meta",
+        "facebook pixel": "meta",
+        "meta pixel": "meta",
+        "aws": "amazon web services",
+        "amazon aws": "amazon web services",
+        "twitter": "x",
+    }
+    return aliases.get(key, key)
+
+
+def _is_researchable_party(name: str) -> bool:
+    key = _canonical_party_key(name)
+    if not key or len(key) < 2:
+        return False
+    if key in GENERIC_PARTY_NAMES:
+        return False
+    if key.endswith(" providers") or key.endswith(" partners"):
+        return False
+    return True
 
 async def _fetch_page(client: httpx.AsyncClient, url: str) -> Tuple[str, bool, Optional[str]]:
     """Fetch URL and return (text, success, error)."""
@@ -502,16 +562,18 @@ async def research_ecosystem(
 
     for tp in (third_parties or []):
         nm = tp.name if hasattr(tp, 'name') else tp.get('name', '')
-        if nm and nm.lower() not in seen:
-            seen.add(nm.lower())
+        key = _canonical_party_key(nm)
+        if nm and _is_researchable_party(nm) and key not in seen:
+            seen.add(key)
             cat = tp.category if hasattr(tp, 'category') else tp.get('category', 'Unknown')
             opt = tp.opt_out_url if hasattr(tp, 'opt_out_url') else tp.get('opt_out_url')
             party_queue.append((nm, cat, opt))
 
     for t in (trackers or []):
         nm = t.name if hasattr(t, 'name') else t.get('name', '')
-        if nm and nm.lower() not in seen:
-            seen.add(nm.lower())
+        key = _canonical_party_key(nm)
+        if nm and _is_researchable_party(nm) and key not in seen:
+            seen.add(key)
             cat = t.category if hasattr(t, 'category') else t.get('category', 'Tracker')
             opt = t.opt_out if hasattr(t, 'opt_out') else t.get('opt_out')
             party_queue.append((nm, cat, opt))
