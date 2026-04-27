@@ -1253,8 +1253,6 @@ def _score_search_result(
     same_domain = _same_registered_domain(url, target_url)
     target_match = _is_target_host_match(host, domain)
     brand_related = _is_brand_related_host(host, domain)
-    official_policy_host = _is_official_policy_host(host, domain)
-    related_domain = brand_related and not same_domain and not target_match
 
     noisy_result_signals = [
         "devforum.", "forum.", "forums.", "community.", "discourse.", "reddit.com",
@@ -1281,13 +1279,6 @@ def _score_search_result(
     if "/faqs/" in path and not _is_primary_policy_path(path):
         return -100
 
-    if related_domain and rank > 0 and not official_policy_host:
-        return -100
-    if not (target_match or same_domain or brand_related or official_policy_host):
-        return -100
-
-    if official_policy_host:
-        score += 36
     if same_domain:
         score += 12
     if target_match:
@@ -1457,13 +1448,16 @@ Return a JSON array of up to {limit} URLs from the search results, ordered best 
 
 Rules:
 - Prefer the primary policy/privacy notice that applies to the target website's ordinary users.
-- Reject lookalike or typo domains. A URL must be on the same registered domain,
-  a helpful subdomain, an explicitly related official domain for the target brand,
-  or one of the official policy hosts listed above.
+- The best URL may be on a different registered domain when that domain is the
+  official owner, publisher, parent company, or legal-policy host for the target
+  product/service (for example a game site using its publisher's legal policy).
+- Reject lookalike, typo, fan, mod, wiki, tracker, mirror, scraper, summary,
+  review, report, school, or unrelated third-party domains.
 - If an official policy host is listed above and Brave returned a primary privacy URL
   on that host, prefer it over weaker explainer/help/privacy-center pages.
 - Related official domains are allowed when clearly the same brand/service
-  (example: steam.com may use store.steampowered.com).
+  (examples: steam.com may use store.steampowered.com; gta5.com may use
+  rockstargames.com; fortnite.com may use epicgames.com).
 - For subdomains, preserve the subdomain intent
   (example: aws.amazon.com should choose AWS privacy; amazon.com should not choose AWS, APS, Ads, Seller Central, or developer policies).
 - Reject update/changelog pages, summaries, security/profile/privacy-settings help pages,
@@ -1504,14 +1498,12 @@ Rules:
         allowed_url, title, snippet, rank = allowed_row
         path = urlparse(allowed_url).path.lower()
         blob = f"{allowed_url}\n{title}\n{snippet}".lower()
-        search_score = _score_search_result(allowed_url, title, snippet, domain, rank=rank)
         if (
             _url_is_non_privacy_legal(allowed_url)
             or _url_is_terms_only_candidate(allowed_url)
             or _url_is_interstitial(allowed_url)
             or _looks_like_product_or_listing_url(allowed_url)
             or not _search_result_mentions_privacy(allowed_url, title, snippet)
-            or search_score <= 0
             or "/eula/" in path
             or "subscriber_agreement" in path
             or "update-privacy-policy" in blob
@@ -1564,9 +1556,12 @@ async def _brave_search_query(
         for item in data.get("web", {}).get("results", [])[:10]
     ]
     ai_candidates = await _ai_pick_search_candidates(rows, domain)
+    if ai_candidates:
+        return ai_candidates[:5]
+
     heuristic_candidates = _pick_search_candidates(rows, domain)
     return _rank_search_candidates(
-        _merge_search_candidates(ai_candidates, heuristic_candidates),
+        heuristic_candidates,
         rows,
         domain,
     )
@@ -1616,10 +1611,10 @@ async def debug_brave_search_candidates(client: httpx.AsyncClient, domain: str) 
     ]
     ai_candidates = await _ai_pick_search_candidates(rows, domain)
     heuristic_candidates = _pick_search_candidates(rows, domain)
-    combined_candidates = _rank_search_candidates(
-        _merge_search_candidates(ai_candidates, heuristic_candidates),
-        rows,
-        domain,
+    combined_candidates = (
+        ai_candidates
+        if ai_candidates
+        else _rank_search_candidates(heuristic_candidates, rows, domain)
     )
     return {
         "query": query,
