@@ -9,7 +9,7 @@ import type {
   PolicyDiscoveryDebug,
 } from './types';
 
-const API = axios.create({ baseURL: '/api', timeout: 90000 });
+const API = axios.create({ baseURL: '/api', timeout: 900000000000000 });
 
 export async function analyzeWebsite(url: string, forceRefresh = false): Promise<AnalysisResult> {
   const { data } = await API.post('/analyze', { url, force_refresh: forceRefresh });
