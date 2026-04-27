@@ -40,7 +40,7 @@ from analyzer.third_party_analyzer import (
 )
 from ai.claude_client import FAST_MODEL, acomplete
 
-AI_POLICY_EXTRACTION_VERSION = 10
+AI_POLICY_EXTRACTION_VERSION = 11
 TAXONOMY_ORDER = {category_id: index for index, category_id in enumerate(DATA_TAXONOMY.keys())}
 DARK_PATTERN_ORDER = {item["type"]: index for index, item in enumerate(DARK_PATTERN_DEFINITIONS)}
 
@@ -695,9 +695,26 @@ def _build_ai_third_parties(payload: Dict[str, Any], source_text: str) -> ThirdP
     )
 
 
-def _retention_rating(days: int | None, period_type: str, is_vague: bool) -> tuple[str, str]:
+_INDEFINITE_RETENTION_RE = re.compile(
+    r"\b(?:indefinitely|forever|permanently|never\s+deleted|without\s+(?:a\s+)?time\s+limit|no\s+expiry)\b",
+    re.I,
+)
+
+
+def _is_indefinite_retention_text(text: str) -> bool:
+    return bool(_INDEFINITE_RETENTION_RE.search(text or ""))
+
+
+def _retention_rating(
+    days: int | None,
+    period_type: str,
+    is_vague: bool,
+    evidence: str = "",
+) -> tuple[str, str]:
     if is_vague or period_type == "vague":
-        return "very_poor", "No specific period"
+        if _is_indefinite_retention_text(evidence):
+            return "very_poor", "Indefinite / no end date"
+        return "poor", "Open-ended / purpose-based"
     if period_type == "event_based":
         return "good", "Event-based deletion"
     if days is None:
@@ -721,10 +738,21 @@ def _overall_retention_rating(
     if has_indefinite_retention:
         return "very_poor"
     if not items:
-        return "very_poor"
-    # Retention is scored by the worst extracted retention posture, not by
-    # Claude's self-assigned summary label.
+        return "unknown"
+
     scores = {"unknown": 0, "very_poor": 1, "poor": 2, "fair": 3, "good": 4, "excellent": 5}
+    non_vague = [item for item in items if item.period_type != "vague"]
+    vague = [item for item in items if item.period_type == "vague"]
+
+    if vague and non_vague:
+        worst_non_vague = min(non_vague, key=lambda item: scores.get(item.rating, 0)).rating
+        if scores.get(worst_non_vague, 0) <= scores["poor"]:
+            return worst_non_vague
+        return "poor"
+
+    if vague:
+        return "very_poor"
+
     return min(items, key=lambda item: scores.get(item.rating, 0)).rating
 
 
@@ -755,9 +783,10 @@ def _build_ai_retention(payload: Any, source_text: str) -> RetentionAnalysis | N
             if not period_text:
                 period_text = "Vague / Unspecified" if period_type == "vague" else "Retention period"
             is_vague = period_type == "vague"
-            rating, label = _retention_rating(period_days, period_type, is_vague)
+            evidence_text = evidence[0]
+            rating, label = _retention_rating(period_days, period_type, is_vague, evidence_text)
             items.append(RetentionItem(
-                context=f"...{evidence[0]}...",
+                context=f"...{evidence_text}...",
                 period_text=period_text,
                 period_days=period_days,
                 period_type=period_type,
@@ -774,10 +803,7 @@ def _build_ai_retention(payload: Any, source_text: str) -> RetentionAnalysis | N
         "request" in item.period_text.lower() or "request" in item.context.lower()
         for item in items
     )
-    has_indefinite = _as_bool(payload.get("has_indefinite_retention")) or any(
-        "indefinite" in item.period_text.lower() or "indefinite" in item.context.lower()
-        for item in items
-    )
+    has_indefinite = any(_is_indefinite_retention_text(item.context) for item in items)
     days_values = [item.period_days for item in items if item.period_days is not None]
     overall = _overall_retention_rating(
         items,

@@ -33,6 +33,10 @@ VAGUE_RETENTION_PATTERNS = [
     r"for (?:a )?reasonable (?:period|time|amount of time)",
     r"in accordance with (?:applicable )?law",
     r"until (?:no longer |it is )?necessary",
+    r"longer (?:when|where|if) (?:reasonably )?necessary",
+    r"longer periods? (?:of time )?when necessary",
+    r"longer than (?:our )?(?:policies|policy|notice) (?:specify|specifies)",
+    r"as required or permitted under (?:applicable )?law",
     r"for (?:the )?purposes? (?:described|outlined|set out)",
     r"for (?:an )?extended period",
     r"on (?:an )?ongoing basis",
@@ -41,6 +45,11 @@ VAGUE_RETENTION_PATTERNS = [
     r"until we (?:no longer )?need",
     r"for (?:business|legal|operational) purposes",
 ]
+
+INDEFINITE_RETENTION_RE = re.compile(
+    r"\b(?:indefinitely|forever|permanently|never\s+deleted|without\s+(?:a\s+)?time\s+limit|no\s+expiry)\b",
+    re.IGNORECASE,
+)
 
 SPECIFIC_PERIOD_PATTERN = re.compile(
     r"(?:retain|keep|store|maintain|hold|preserve)\w*\s+(?:for\s+)?(?:up\s+to\s+|at\s+least\s+|approximately\s+)?"
@@ -66,6 +75,7 @@ EVENT_BASED_PATTERNS = [
     (r"(?:until|upon|after|following)\s+account\s+(?:deletion|closure|termination|cancellation)", "Until account deletion"),
     (r"(?:when|once)\s+(?:you\s+)?(?:delete|close|terminate|cancel)\s+(?:your\s+)?account", "Until account deletion"),
     (r"(?:until|upon)\s+(?:your\s+)?request", "Until user requests deletion"),
+    (r"(?:delete|deletion)\s+whenever\s+(?:you\s+)?(?:like|choose|want)", "User-controlled deletion"),
     (r"upon\s+(?:written\s+)?request", "Upon request"),
     (r"within\s+\d+\s+(?:days?|months?)\s+of\s+(?:your\s+)?request", "Within defined period of request"),
     (r"(?:after|following)\s+(?:the\s+end\s+of\s+)?(?:our\s+)?(?:business\s+)?relationship", "After relationship ends"),
@@ -96,6 +106,12 @@ def _days_to_rating(days: Optional[int]) -> Tuple[str, str]:
     if days <= 730:
         return "poor", "1–2 years"
     return "very_poor", f">{days // 365} years"
+
+
+def _vague_retention_rating(context: str) -> Tuple[str, str]:
+    if INDEFINITE_RETENTION_RE.search(context or ""):
+        return "very_poor", "Indefinite / no end date"
+    return "poor", "Open-ended / purpose-based"
 
 
 def _parse_period_string(period_str: str) -> Optional[int]:
@@ -215,13 +231,14 @@ def analyze_retention(policy_text: str) -> RetentionAnalysis:
             context = " ".join(policy_text[start:end].split())
             already = any(i.period_text == "Vague / Unspecified" for i in items)
             if not already:
+                rating, label = _vague_retention_rating(context)
                 items.append(RetentionItem(
                     context=f"…{context}…",
                     period_text="Vague / Unspecified",
                     period_days=None,
                     period_type="vague",
-                    rating="very_poor",
-                    rating_label="No specific period",
+                    rating=rating,
+                    rating_label=label,
                     is_vague=True,
                 ))
             break
@@ -246,13 +263,20 @@ def analyze_retention(policy_text: str) -> RetentionAnalysis:
         r"(?:storage\s+limitation|data\s+minimiz|purpose\s+limitation|no\s+longer\s+necessary)",
         text_lower,
     ))
+    indefinite = bool(INDEFINITE_RETENTION_RE.search(policy_text))
 
     # Overall rating
     rating_scores = {"excellent": 5, "good": 4, "fair": 3, "poor": 2, "very_poor": 1, "unknown": 0}
     if not items:
+        overall = "unknown"
+    elif indefinite:
         overall = "very_poor"
-    elif vague and not specific:
+    elif vague and not specific and not event:
         overall = "very_poor"
+    elif vague and (specific or event):
+        non_vague = specific + event
+        worst_non_vague = min(non_vague, key=lambda item: rating_scores.get(item.rating, 0)).rating
+        overall = worst_non_vague if rating_scores.get(worst_non_vague, 0) <= rating_scores["poor"] else "poor"
     else:
         scores = [rating_scores.get(i.rating, 0) for i in items]
         avg = sum(scores) / len(scores) if scores else 0
@@ -266,8 +290,6 @@ def analyze_retention(policy_text: str) -> RetentionAnalysis:
             overall = "poor"
         else:
             overall = "very_poor"
-
-    indefinite = bool(re.search(r"\bindefinitely\b", text_lower))
 
     return RetentionAnalysis(
         items=items[:20],  # cap at 20
