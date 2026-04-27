@@ -42,32 +42,50 @@ export default function LoadingScreen({ url }: { url: string }) {
         🔍 {url}
       </div>
 
-      {/* Steps */}
+      {/* Steps — these are an estimated timeline of phases the analyzer
+          typically goes through; we DON'T have a real success signal from the
+          backend yet, so we deliberately do NOT mark past steps with a green
+          checkmark (which would imply that step actually succeeded). Past
+          steps get a neutral dim dot, the current step pulses, future steps
+          stay as outlined circles. The real ✓ / ✗ findings appear once the
+          analysis completes and the result page renders. */}
       <div className="space-y-2 min-w-[320px]">
         {STEPS.map((s, i) => (
           <div
             key={i}
             className={`flex items-center gap-3 font-mono text-xs transition-all duration-500 ${
-              i <= step ? 'opacity-100' : 'opacity-20'
+              i <= step ? 'opacity-100' : 'opacity-25'
             }`}
           >
             {i < step ? (
-              <svg className="w-4 h-4 text-accent-green flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-              </svg>
+              // Past step: neutral filled dot, NOT a checkmark — we can't
+              // honestly claim it succeeded yet.
+              <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
+                <div className="w-1.5 h-1.5 rounded-full bg-white/30" />
+              </div>
             ) : i === step ? (
+              // Currently-running step: pulsing accent dot.
               <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
                 <div className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
               </div>
             ) : (
+              // Future step: empty outlined circle.
               <div className="w-4 h-4 flex-shrink-0 rounded-full border border-white/10" />
             )}
-            <span className={i === step ? 'text-accent-green' : i < step ? 'text-white/60' : 'text-white/20'}>
+            <span className={
+              i === step ? 'text-accent-green'
+              : i < step ? 'text-white/40'
+              : 'text-white/25'
+            }>
               {s.label}
             </span>
           </div>
         ))}
       </div>
+
+      <p className="text-[10px] font-mono text-white/25 text-center max-w-xs leading-relaxed">
+        These are typical phases — final findings (✓ / ✗) appear once analysis completes.
+      </p>
     </div>
   );
 }

@@ -128,6 +128,18 @@ def _cached_result_matches_enabled_features(result_json: dict) -> bool:
             return False
         if meta.get("complete") is not True:
             return False
+
+    # Score-breakdown schema check: older cached results don't contain the
+    # per-dimension `baselines` / `clamped` fields, and they're missing the
+    # additional penalty entries (high/medium sensitivity, mid-range tracker
+    # counts, etc.). Without these the UI can't show the math line and the
+    # numbers don't add up. Treat such cache entries as stale and re-analyze.
+    sb = result_json.get("score_breakdown") or {}
+    if not isinstance(sb.get("baselines"), dict):
+        return False
+    if "clamped" not in sb:
+        return False
+
     return True
 
 
@@ -581,6 +593,8 @@ def _build_result(url, domain, crawl, analysis, tracker_result, score, dynamic_r
             "technical": score.technical_score,
             "mismatch": score.mismatch_score,
             "weights": score.weights,
+            "baselines": score.baselines,
+            "clamped": score.clamped,
         },
         "penalties": score.penalties,
         "bonuses": score.bonuses,
