@@ -35,7 +35,13 @@ def _get_async_client() -> "anthropic.AsyncAnthropic | None":
     return anthropic.AsyncAnthropic(api_key=api_key)
 
 
-def complete(prompt: str, system: str = "", model: str = MODEL, max_tokens: int = 2048) -> Optional[str]:
+def complete(
+    prompt: str,
+    system: str = "",
+    model: str = MODEL,
+    max_tokens: int = 2048,
+    temperature: float = 0.0,
+) -> Optional[str]:
     """Synchronous completion."""
     client = _get_client()
     if not client:
@@ -44,6 +50,7 @@ def complete(prompt: str, system: str = "", model: str = MODEL, max_tokens: int 
     resp = client.messages.create(
         model=model,
         max_tokens=max_tokens,
+        temperature=temperature,
         system=system,
         messages=msgs,
     )
@@ -56,6 +63,7 @@ async def acomplete(
     model: str = MODEL,
     max_tokens: int = 2048,
     messages: Optional[list] = None,
+    temperature: float = 0.0,
 ) -> Optional[str]:
     """Async completion."""
     client = _get_async_client()
@@ -65,6 +73,7 @@ async def acomplete(
     resp = await client.messages.create(
         model=model,
         max_tokens=max_tokens,
+        temperature=temperature,
         system=system,
         messages=msgs,
     )
@@ -77,6 +86,7 @@ async def astream(
     model: str = MODEL,
     max_tokens: int = 2048,
     messages: Optional[list] = None,
+    temperature: float = 0.0,
 ) -> AsyncIterator[str]:
     """Async streaming completion – yields text chunks."""
     client = _get_async_client()
@@ -87,6 +97,7 @@ async def astream(
     async with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
+        temperature=temperature,
         system=system,
         messages=msgs,
     ) as stream:

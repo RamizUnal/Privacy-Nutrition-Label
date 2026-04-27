@@ -197,6 +197,8 @@ CCPA_RIGHTS = {
             r"right\s+to\s+correct",
             r"correct\s+inaccurate\s+(?:personal\s+)?information",
             r"update\s+(?:or\s+correct|and\s+correct)",
+            r"(?:access,\s*)?correct,\s*or\s*modify\s+(?:the\s+)?information\s+(?:you\s+)?provided",
+            r"correct\s+or\s+modify\s+(?:your|the)\s+(?:personal\s+)?(?:data|information)",
         ],
     },
     "right_to_limit_sensitive": {
