@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="Privacy Nutrition Label API",
+    title="Privacy Lens API",
     description="Analyzes websites and generates comprehensive privacy labels.",
     version="1.0.0",
     lifespan=lifespan,

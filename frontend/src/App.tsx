@@ -81,8 +81,7 @@ export default function App() {
               </div>
               <h1 className="font-display text-5xl md:text-6xl font-bold text-white mb-4 leading-tight">
                 Privacy
-                <span className="text-gradient-green"> Nutrition</span>
-                <br />Label Generator
+                <span className="text-gradient-green"> Lens</span>
               </h1>
               <p className="text-white/50 text-lg font-sans leading-relaxed">
                 Enter any website URL to generate a comprehensive privacy analysis. We scan privacy policies, detect trackers, identify dark patterns, and score compliance with GDPR & CCPA.
