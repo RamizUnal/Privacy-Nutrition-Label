@@ -202,7 +202,7 @@ export default function AIInsights({ domain, result, onLoad }: Props) {
           <Section title="Run Output">
             <div className="grid grid-cols-1 gap-2 text-sm text-white/50">
               <p>Plain-language summary, top risks, policy quotes, compliance gaps, and concrete user actions will appear here.</p>
-              <p className="font-mono text-xs text-white/30">Uses Claude Haiku and the stored analysis for {domain}.</p>
+              <p className="font-mono text-xs text-white/30">Uses AI analysis and the stored analysis for {domain}.</p>
             </div>
           </Section>
         </div>

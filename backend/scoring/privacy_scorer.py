@@ -98,6 +98,29 @@ def _risk_level(score: int) -> str:
     return "critical"
 
 
+def _calculate_transparency_score(sentiment) -> int:
+    """Score transparency from extracted facts; never trust an upstream score field."""
+    vagueness_score = getattr(sentiment, "vagueness_score", 0) or 0
+    specificity_score = getattr(sentiment, "specificity_score", 0) or 0
+    passive_ratio = getattr(sentiment, "passive_voice_ratio", 0.0) or 0.0
+    accountability = getattr(sentiment, "accountability", {}) or {}
+    named_count = len(getattr(sentiment, "named_third_parties", []) or [])
+
+    if accountability:
+        accountability_score = int(sum(1 for value in accountability.values() if value) / len(accountability) * 100)
+    else:
+        accountability_score = 0
+
+    score = int(
+        (specificity_score * 0.3)
+        + (accountability_score * 0.3)
+        + ((1 - passive_ratio) * 100 * 0.2)
+        + (min(named_count, 10) * 3)
+        - (vagueness_score * 0.2)
+    )
+    return max(0, min(100, score))
+
+
 def calculate_score(
     data_types,          # List[DetectedDataType]
     third_parties,       # ThirdPartyAnalysis
@@ -231,7 +254,7 @@ def calculate_score(
     sharing_score = max(0, sharing_score)
 
     # ── 3. TRANSPARENCY SCORE (0–100) ─────────────────────────────────────────
-    transparency_score = sentiment.transparency_score
+    transparency_score = _calculate_transparency_score(sentiment)
 
     # DPO presence
     if sentiment.accountability.get("dpo_named"):

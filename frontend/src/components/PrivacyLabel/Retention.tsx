@@ -11,10 +11,30 @@ const RATING_CONFIG: Record<string, { color: string; label: string; description:
   excellent: { color: '#00e676', label: 'Excellent', description: 'Short, well-defined retention periods' },
   good: { color: '#40c4ff', label: 'Good', description: 'Reasonable retention periods stated' },
   fair: { color: '#ffd740', label: 'Fair', description: 'Some specific periods, could be shorter' },
-  poor: { color: '#ff9100', label: 'Poor', description: 'Long retention or vague periods' },
-  very_poor: { color: '#ff1744', label: 'Very Poor', description: 'No specific retention or indefinite' },
+  poor: { color: '#ff9100', label: 'Poor', description: 'Long, vague, or open-ended retention clauses' },
+  very_poor: { color: '#ff1744', label: 'Very Poor', description: 'Indefinite, very long, or missing retention limits' },
   unknown: { color: '#888', label: 'Unknown', description: 'No retention information found' },
 };
+
+function retentionSummary(retention: RetentionAnalysis, fallback: string) {
+  const hasItems = (retention.items || []).length > 0;
+  if (!hasItems) return 'No retention clauses were extracted from the policy.';
+  if (retention.has_indefinite_retention) {
+    return retention.has_specific_periods || retention.has_event_based_deletion
+      ? 'Specific retention rules were found, but the policy also states indefinite retention risk.'
+      : 'Indefinite retention is stated without clear deletion limits.';
+  }
+  if (retention.has_vague_retention && (retention.has_specific_periods || retention.has_event_based_deletion)) {
+    return 'Specific retention rules were found, but broad legal/business-purpose exceptions remain.';
+  }
+  if (retention.has_specific_periods && retention.has_event_based_deletion) {
+    return 'Specific retention periods and event-based deletion rules were found.';
+  }
+  if (retention.has_specific_periods) return 'Specific retention periods were found.';
+  if (retention.has_event_based_deletion) return 'Event-based deletion rules were found.';
+  if (retention.has_vague_retention) return 'Only vague or purpose-based retention language was found.';
+  return fallback;
+}
 
 function ExtractionSource({ result }: { result: AnalysisResult }) {
   const source = result.ai_extraction?.retention_source;
@@ -28,7 +48,7 @@ function ExtractionSource({ result }: { result: AnalysisResult }) {
         Extraction source
       </div>
       <div className={`mt-1 font-mono text-sm ${isAI ? 'text-violet-300' : 'text-white/45'}`}>
-        {isAI ? 'Claude AI with policy quotes' : 'Regex fallback'}
+        {isAI ? 'LLM analysis with policy quotes' : 'Regex fallback'}
       </div>
     </div>
   );
@@ -47,6 +67,7 @@ export default function Retention({ retention, result }: Props) {
   }
 
   const config = RATING_CONFIG[retention.overall_rating] || RATING_CONFIG.unknown;
+  const summary = retentionSummary(retention, config.description);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)] gap-6 items-start">
@@ -65,7 +86,7 @@ export default function Retention({ retention, result }: Props) {
           </div>
           <div className="flex-1">
             <h2 className="font-mono text-sm text-white/60 uppercase tracking-wider mb-2">Data Retention Rating</h2>
-            <p className="font-sans text-white/70">{config.description}</p>
+            <p className="font-sans text-white/70">{summary}</p>
             <p className="text-xs font-mono text-white/30 mt-2">
               GDPR Art. 5(1)(e) – Storage Limitation Principle: Data must be kept "no longer than is necessary
               for the purposes for which the personal data are processed."

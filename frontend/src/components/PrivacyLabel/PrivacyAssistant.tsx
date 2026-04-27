@@ -275,7 +275,7 @@ export default function PrivacyAssistant({ domain, result }: Props) {
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-panel px-4 py-3">
           <div>
             <h2 className="font-mono text-sm font-semibold text-white/100">Privacy Assistant</h2>
-            <p className="mt-0.5 font-mono text-xs text-white/30">{domain} · claude-haiku-4-5</p>
+            <p className="mt-0.5 font-mono text-xs text-white/30">{domain} · privacy AI assistant</p>
           </div>
           <div className="flex items-center gap-2">
             {lastError && <span className="hidden font-mono text-[11px] text-red-300/100 md:inline">{lastError}</span>}
