@@ -133,6 +133,7 @@ export default function MismatchPanel({ mismatch }: Props) {
   const summary = mismatch.summary || '';
   const isInconclusive =
     /inconclusive/i.test(summary) ||
+    /usable_for_mismatch\s*=\s*false/i.test(summary) ||
     (mismatch.mismatch_score === 50 && mismatch.total_count === 0 && /Dynamic crawl/i.test(summary));
 
   const counts = [
@@ -206,7 +207,7 @@ export default function MismatchPanel({ mismatch }: Props) {
             <span className="font-mono text-sm text-white/70">Consent Effectiveness</span>
             <p className="text-xs font-mono text-white/30 mt-0.5">
                 {isInconclusive
-                  ? 'Dynamic crawl could not reliably verify reject/accept behavior'
+              ? 'Dynamic crawl could not reliably verify reject/accept behavior.'
                   : '% of trackers deactivated after rejecting consent'}
             </p>
           </div>
@@ -230,7 +231,7 @@ export default function MismatchPanel({ mismatch }: Props) {
           </div>
           {isInconclusive ? (
             <p className="text-xs text-white/40 font-mono mt-2">
-              Dynamic crawl could not reliably verify reject/accept behavior. See analysis summary for reasons.
+              Consent effectiveness: Inconclusive. Dynamic crawl could not reliably verify reject/accept behavior.
             </p>
           ) : !consentGood && mismatch.consent_effectiveness_pct < 50 ? (
             <p className="text-xs text-red-400/70 font-mono mt-2">

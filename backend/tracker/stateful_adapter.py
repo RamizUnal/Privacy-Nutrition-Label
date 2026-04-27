@@ -105,6 +105,13 @@ def _legacy_state(state_name: str, state: Dict[str, Any]) -> Dict[str, Any]:
         except Exception:
             third_party_request_count = 0
 
+    nonessential_cookie_count = _first_value(state, ["nonessential_cookie_count"], default=0)
+    if not isinstance(nonessential_cookie_count, int):
+        try:
+            nonessential_cookie_count = int(nonessential_cookie_count)
+        except Exception:
+            nonessential_cookie_count = 0
+
     action_taken = _first_value(state, ["action_taken", "action", "status"], default="unknown")
     known_tracker_names = state.get("known_tracker_names") if isinstance(state.get("known_tracker_names"), list) else []
     known_tracker_domains = state.get("known_tracker_domains") if isinstance(state.get("known_tracker_domains"), list) else []
@@ -122,6 +129,7 @@ def _legacy_state(state_name: str, state: Dict[str, Any]) -> Dict[str, Any]:
         "total_requests": _first_value(state, ["request_count_total", "total_requests"], default=0),
         "third_party_domains": third_party_domains,
         "total_cookies": _first_value(state, ["cookies_total", "total_cookies"], default=0),
+        "nonessential_cookie_count": nonessential_cookie_count,
         "total_trackers": total_trackers,
         "known_tracker_count": known_tracker_count,
         "known_tracker_domains": known_tracker_domains,
@@ -244,11 +252,16 @@ def _compute_mismatch_detected(stateful: Dict[str, Any], quality: Dict[str, Any]
 
     s0_trackers = int(_first_value(s0, ["known_tracker_count"], default=0) or 0)
     s1_trackers = int(_first_value(s1, ["known_tracker_count"], default=0) or 0)
-    s0_cookies = int(_first_value(s0, ["cookies_total", "total_cookies"], default=0) or 0)
-    s1_cookies = int(_first_value(s1, ["cookies_total", "total_cookies"], default=0) or 0)
+    s0_nonessential_cookies = int(_first_value(s0, ["nonessential_cookie_count"], default=0) or 0)
+    s1_nonessential_cookies = int(_first_value(s1, ["nonessential_cookie_count"], default=0) or 0)
 
-    # conservative mismatch: reject does not reduce trackers/cookies from baseline.
-    if (s0_trackers > 0 and s1_trackers >= s0_trackers) or (s0_cookies > 0 and s1_cookies >= s0_cookies):
+    # Primary rule: any pre-consent or post-reject tracker presence is a mismatch.
+    if s0_trackers > 0 or s1_trackers > 0:
+        return True
+
+    # Secondary rule: only non-essential cookies may indicate tracking.
+    # Consent/essential cookies are excluded at the crawler layer.
+    if s0_nonessential_cookies > 0 or s1_nonessential_cookies > 0:
         return True
     return False
 

@@ -98,7 +98,9 @@ export default function Trackers({ trackers, runtime }: Props) {
             </p>
           )}
           {knownMatching && (s0?.known_tracker_count ?? 0) + (s1?.known_tracker_count ?? 0) + (s2?.known_tracker_count ?? 0) === 0 && (
-            <p className="text-xs text-white/45 font-mono mt-3">No known trackers confirmed by runtime matching.</p>
+            <p className="text-xs text-white/45 font-mono mt-3">
+              No known tracker database matches. Runtime third-party requests are shown separately.
+            </p>
           )}
         </div>
       )}

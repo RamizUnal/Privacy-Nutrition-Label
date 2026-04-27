@@ -42,6 +42,34 @@ CONSENT_STORAGE_KEYWORDS = [
     "consent", "cookie", "gdpr", "ccpa", "onetrust", "optanon", "cookiebot", "didomi", "trustarc", "euconsent",
 ]
 
+CONSENT_COOKIE_NAME_HINTS = [
+    "consent",
+    "essential_cookie",
+    "optanonconsent",
+    "cookieconsent",
+    "cookiebot",
+    "didomi",
+    "trustarc",
+    "euconsent",
+    "onetrust",
+]
+
+BANNER_VISIBLE_SELECTORS = [
+    "#banner",
+    "[id*='cookie' i]",
+    "[class*='cookie' i]",
+    "[id*='consent' i]",
+    "[class*='consent' i]",
+    "[id*='onetrust' i]",
+    "[class*='onetrust' i]",
+    "[aria-label*='cookie' i]",
+    "[aria-label*='consent' i]",
+    "[role='dialog']",
+    "[role='alertdialog']",
+]
+
+BANNER_KEYWORDS = ["cookie", "consent", "çerez", "onetrust", "optanon", "cookiebot", "trustarc", "gdpr"]
+
 
 def _host(url: str) -> Optional[str]:
     try:
@@ -55,13 +83,23 @@ def _etld1(hostname: Optional[str]) -> Optional[str]:
         return None
     ext = tldextract.extract(hostname)
     if not ext.domain or not ext.suffix:
-        return None
+        parts = [part for part in hostname.split(".") if part]
+        if len(parts) >= 2:
+            return ".".join(parts[-2:])
+        return hostname
     return f"{ext.domain}.{ext.suffix}"
 
 
 def _is_consent_key(key: str) -> bool:
     key_lower = key.lower()
     return any(token in key_lower for token in CONSENT_STORAGE_KEYWORDS)
+
+
+def _is_consent_or_essential_cookie_name(name: str) -> bool:
+    name_lower = str(name or "").strip().lower()
+    if not name_lower:
+        return False
+    return any(token in name_lower for token in CONSENT_COOKIE_NAME_HINTS)
 
 
 async def _read_consent_storage(page: Page) -> Dict[str, Any]:
@@ -176,18 +214,71 @@ async def _click_first_matching_button(page: Page, keywords: List[str]) -> bool:
     return False
 
 
+async def _perform_consent_action(page: Page, consent_action: str, click_fn=None) -> tuple[bool, str]:
+    if click_fn is None:
+        click_fn = _click_first_matching_button
+
+    if consent_action == "accept":
+        clicked = await click_fn(page, ACCEPT_PATTERNS)
+        if clicked:
+            return True, "accept_clicked"
+
+        managed = await click_fn(page, MANAGE_PATTERNS)
+        if managed:
+            clicked_accept = await click_fn(page, ACCEPT_PATTERNS)
+            return bool(clicked_accept), ("manage_then_accept_clicked" if clicked_accept else "manage_no_accept")
+
+        return False, "accept_not_found"
+
+    if consent_action == "reject":
+        clicked = await click_fn(page, REJECT_PATTERNS)
+        if clicked:
+            return True, "reject_clicked"
+
+        managed = await click_fn(page, MANAGE_PATTERNS)
+        if managed:
+            clicked_reject = await click_fn(page, REJECT_PATTERNS)
+            return bool(clicked_reject), ("manage_then_reject_clicked" if clicked_reject else "manage_no_reject")
+
+        return False, "reject_not_found"
+
+    return False, "none"
+
+
 async def _detect_banner(page: Page) -> bool:
+    candidate_seen = False
     try:
+        for selector in BANNER_VISIBLE_SELECTORS:
+            try:
+                loc = page.locator(selector)
+                count = await loc.count()
+            except Exception:
+                continue
+
+            if count > 0:
+                candidate_seen = True
+
+            for index in range(min(count, 20)):
+                item = loc.nth(index)
+                try:
+                    if not await item.is_visible():
+                        continue
+                    text = ((await item.inner_text()) or "").lower()
+                    aria = ((await item.get_attribute("aria-label")) or "").lower()
+                    combined = f"{text} {aria}".strip()
+                    if combined and any(keyword in combined for keyword in BANNER_KEYWORDS):
+                        return True
+                except Exception:
+                    continue
+
+        if candidate_seen:
+            return False
+
+        # Conservative fallback only when there are no obvious banner-like candidates.
         html = (await page.content()).lower()
     except Exception:
         return False
-    return (
-        "cookie" in html
-        or "çerez" in html
-        or "consent" in html
-        or "onetrust" in html
-        or "trustarc" in html
-    )
+    return any(keyword in html for keyword in BANNER_KEYWORDS)
 
 
 async def _detect_challenge_or_login(page: Page) -> Dict[str, bool]:
@@ -304,20 +395,8 @@ async def crawl_site_states(
                 cookies_before = []
             storage_before = await _read_consent_storage(page)
 
-            if consent_action == "accept":
-                clicked = await _click_first_matching_button(page, ACCEPT_PATTERNS)
-                action_taken = "accept_clicked" if clicked else "accept_not_found"
-            elif consent_action == "reject":
-                clicked = await _click_first_matching_button(page, REJECT_PATTERNS)
-                if clicked:
-                    action_taken = "reject_clicked"
-                else:
-                    managed = await _click_first_matching_button(page, MANAGE_PATTERNS)
-                    if managed:
-                        clicked_reject = await _click_first_matching_button(page, REJECT_PATTERNS)
-                        action_taken = "manage_then_reject_clicked" if clicked_reject else "manage_no_reject"
-                    else:
-                        action_taken = "reject_not_found"
+            if consent_action in ("accept", "reject"):
+                clicked, action_taken = await _perform_consent_action(page, consent_action)
 
             await page.wait_for_timeout(1800)
 
@@ -330,7 +409,18 @@ async def crawl_site_states(
                 cookies_after = []
             storage_after = await _read_consent_storage(page)
 
-            third_party_domains_after_click = _third_party_domains_from_urls(requests_after_click, first_party or "")
+            third_party_request_urls_after_click: List[str] = []
+            third_party_domains_after_click: List[str] = []
+            seen_third_party_domains = set()
+            for request_url in requests_after_click:
+                domain = _etld1(_host(request_url))
+                if not domain or domain == first_party:
+                    continue
+                third_party_request_urls_after_click.append(request_url)
+                if domain not in seen_third_party_domains:
+                    seen_third_party_domains.add(domain)
+                    third_party_domains_after_click.append(domain)
+
             cookie_names_before = _cookie_name_set(cookies_before)
             cookie_names_after = _cookie_name_set(cookies_after)
             new_cookie_names = sorted(cookie_names_after - cookie_names_before)
@@ -374,7 +464,8 @@ async def crawl_site_states(
                     "requests_before_click": request_count_before_click,
                     "requests_after_click": len(requests_after_click),
                     "request_urls_after_click": requests_after_click,
-                    "third_party_requests_after_click": len(third_party_domains_after_click),
+                    "third_party_requests_after_click": len(third_party_request_urls_after_click),
+                    "third_party_request_urls_after_click": third_party_request_urls_after_click,
                     "new_third_party_domains_after_click": third_party_domains_after_click,
                     "cookies_before_click": len(cookies_before),
                     "cookies_after_click": len(cookies_after),
@@ -441,8 +532,18 @@ async def crawl_site_states(
         cookie_secure_false = 0
         cookie_samesite_none = 0
         cookie_total = len(state.cookies) if state.cookies else 0
+        cookie_names: List[str] = []
+        nonessential_cookie_names: List[str] = []
+        nonessential_cookie_count = 0
 
         for cookie in state.cookies:
+            cookie_name = str(cookie.get("name") or "")
+            if cookie_name:
+                cookie_names.append(cookie_name)
+                if not _is_consent_or_essential_cookie_name(cookie_name):
+                    nonessential_cookie_names.append(cookie_name)
+                    nonessential_cookie_count += 1
+
             domain_raw = (cookie.get("domain") or "").lstrip(".")
             cookie_domain = _etld1(domain_raw)
             if cookie_domain and first_party and cookie_domain != first_party:
@@ -472,6 +573,9 @@ async def crawl_site_states(
             "unique_third_party_etld1": len(set(third_party_domains)),
             "third_party_request_count": len(third_party_domains),
             "cookies_total": cookie_total,
+            "cookie_names": cookie_names,
+            "nonessential_cookie_count": nonessential_cookie_count,
+            "nonessential_cookie_names": nonessential_cookie_names,
             "cookies_third_party_est": cookie_third_party,
             "cookie_httpOnly_false_pct": (cookie_http_only_false / cookie_total) if cookie_total else None,
             "cookie_secure_false_pct": (cookie_secure_false / cookie_total) if cookie_total else None,

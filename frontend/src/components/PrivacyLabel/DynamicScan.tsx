@@ -30,6 +30,31 @@ export default function DynamicScan({ dynamic }: Props) {
   const s1ClickVerification = stateful.S1?.click_verification;
   const s2ClickVerification = stateful.S2?.click_verification;
 
+  const renderClickSummary = (label: string, cv: Record<string, any> | undefined) => {
+    if (!cv) return null;
+    const fields = [
+      `clicked=${String(cv.clicked)}`,
+      `likely_click_worked=${String(cv.likely_click_worked)}`,
+      `banner_before=${String(cv.banner_before)}`,
+      `banner_after=${String(cv.banner_after)}`,
+      `consent_storage_changed=${String(cv.consent_storage_changed)}`,
+      `requests_after_click=${String(cv.requests_after_click)}`,
+      `third_party_requests_after_click=${String(cv.third_party_requests_after_click)}`,
+    ];
+    const evidence = Array.isArray(cv.evidence) ? cv.evidence.join(', ') : 'none';
+    const cookieNames = Array.isArray(cv.new_cookie_names_after_click) && cv.new_cookie_names_after_click.length > 0
+      ? cv.new_cookie_names_after_click.join(', ')
+      : 'none';
+
+    return (
+      <div key={label} className="text-xs text-white/45 font-mono space-y-1">
+        <div>{label}: {fields.join(' · ')}</div>
+        <div>new_cookie_names={cookieNames}</div>
+        <div>evidence={evidence}</div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-panel border border-border rounded-xl p-5">
@@ -50,6 +75,9 @@ export default function DynamicScan({ dynamic }: Props) {
           <p className="text-xs text-white/45 mt-2 font-mono">
             usable_for_scoring={String(quality.usable_for_scoring)} · usable_for_mismatch={String(quality.usable_for_mismatch)} · requires_human={String(requiresHuman)}
           </p>
+          {requiresHuman && (
+            <p className="text-xs text-white/40 mt-2 font-mono">human_reasons: {(dynamic.human_reasons || []).join(', ') || 'none'}</p>
+          )}
           {qualityReasons.length > 0 && (
             <p className="text-xs text-white/40 mt-2 font-mono">reasons: {qualityReasons.join(', ')}</p>
           )}
@@ -151,16 +179,10 @@ export default function DynamicScan({ dynamic }: Props) {
         {(s1ClickVerification || s2ClickVerification) && (
           <div className="mt-6 border border-border rounded-xl p-4 bg-surface/20">
             <h4 className="font-mono text-xs text-white/40 uppercase tracking-wider mb-3">Click verification</h4>
-            {s1ClickVerification && (
-              <p className="text-xs text-white/50 font-mono mb-2">
-                S1 likely_click_worked={String(s1ClickVerification.likely_click_worked)} · evidence={((s1ClickVerification.evidence || []) as string[]).join(', ') || 'none'}
-              </p>
-            )}
-            {s2ClickVerification && (
-              <p className="text-xs text-white/50 font-mono">
-                S2 likely_click_worked={String(s2ClickVerification.likely_click_worked)} · evidence={((s2ClickVerification.evidence || []) as string[]).join(', ') || 'none'}
-              </p>
-            )}
+            <div className="space-y-2">
+              {renderClickSummary('S1', s1ClickVerification)}
+              {renderClickSummary('S2', s2ClickVerification)}
+            </div>
           </div>
         )}
       </div>
