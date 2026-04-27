@@ -73,30 +73,114 @@ export default function Retention({ retention, result }: Props) {
           </div>
         </div>
 
-        {/* Signal cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {[
-            { label: 'Specific Periods Stated', value: retention.has_specific_periods, good: true },
-            { label: 'Event-Based Deletion', value: retention.has_event_based_deletion, good: true },
-            { label: 'Deletion on Request', value: retention.deletion_on_request, good: true },
-            { label: 'Vague Retention', value: retention.has_vague_retention, good: false },
-            { label: 'Indefinite Retention', value: retention.has_indefinite_retention, good: false },
-            { label: 'Storage Limitation Mentioned', value: retention.storage_limitation_mentioned, good: true },
-          ].map(s => (
-            <div key={s.label} className={`bg-panel border rounded-xl p-4 ${
-              (s.good && s.value) ? 'border-green-800/40' :
-              (!s.good && s.value) ? 'border-red-800/40' : 'border-border'
-            }`}>
-              <div className={`text-xl font-mono font-bold ${
-                (s.good && s.value) ? 'text-green-400' :
-                (!s.good && s.value) ? 'text-red-400' : 'text-white/25'
-              }`}>
-                {s.value ? (s.good ? '✓' : '⚠') : (s.good ? '✗' : '✓')}
-              </div>
-              <div className="text-xs font-mono text-white/50 mt-1">{s.label}</div>
+        {/* Signal cards — each card explains in plain language what the
+            check / cross actually means for THIS policy, plus the relevant
+            evidence (e.g. shortest/longest period in days) when available. */}
+        {(() => {
+          // Pre-format the period range so we can drop it into the description.
+          const fmtDays = (d: number | null | undefined): string | null => {
+            if (d == null) return null;
+            if (d >= 365) return `${(d / 365).toFixed(d % 365 === 0 ? 0 : 1)}y`;
+            if (d >= 30) return `${Math.round(d / 30)} mo`;
+            return `${d}d`;
+          };
+          const shortest = fmtDays(retention.shortest_days);
+          const longest = fmtDays(retention.longest_days);
+          const periodRange =
+            shortest && longest && shortest !== longest
+              ? `Range: ${shortest} – ${longest}`
+              : (shortest || longest || null);
+
+          const signals: {
+            label: string;
+            value: boolean;
+            good: boolean;          // is "true" the desirable outcome?
+            descTrue: string;       // what shown when value === true
+            descFalse: string;      // what shown when value === false
+          }[] = [
+            {
+              label: 'Specific Periods Stated',
+              value: !!retention.has_specific_periods,
+              good: true,
+              descTrue: periodRange
+                ? `Concrete time periods given. ${periodRange}.`
+                : 'Concrete time periods given in the policy.',
+              descFalse: 'No exact retention period is stated in the policy.',
+            },
+            {
+              label: 'Event-Based Deletion',
+              value: !!retention.has_event_based_deletion,
+              good: true,
+              descTrue: 'Data is deleted on a triggering event (e.g. when you close your account).',
+              descFalse: 'No event-based deletion clause found (e.g. "deleted upon account closure").',
+            },
+            {
+              label: 'Deletion on Request',
+              value: !!retention.deletion_on_request,
+              good: true,
+              descTrue: 'You can ask the company to delete your data and they commit to doing so.',
+              descFalse: 'The policy does not promise to delete your data when you ask.',
+            },
+            {
+              label: 'Vague Retention',
+              value: !!retention.has_vague_retention,
+              good: false,
+              descTrue: 'Policy uses non-specific language like "as long as necessary" or "as required by law".',
+              descFalse: 'Retention language is reasonably specific — no vague "as needed" phrasing.',
+            },
+            {
+              label: 'Indefinite Retention',
+              value: !!retention.has_indefinite_retention,
+              good: false,
+              descTrue: 'Policy says some data is kept indefinitely — i.e. forever.',
+              descFalse: 'No indefinite-retention clause detected.',
+            },
+            {
+              label: 'Storage Limitation Mentioned',
+              value: !!retention.storage_limitation_mentioned,
+              good: true,
+              descTrue: 'Policy explicitly acknowledges the GDPR Art. 5(1)(e) storage-limitation principle.',
+              descFalse: 'The storage-limitation principle (GDPR Art. 5(1)(e)) is not referenced.',
+            },
+          ];
+
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {signals.map(s => {
+                const isPositiveOutcome = (s.good && s.value) || (!s.good && !s.value);
+                const isWarning = !s.good && s.value;
+                const isMissing = s.good && !s.value;
+                const borderClass = isWarning
+                  ? 'border-red-800/40'
+                  : isPositiveOutcome
+                  ? 'border-green-800/40'
+                  : 'border-border';
+                const iconColor = isWarning
+                  ? 'text-red-400'
+                  : isPositiveOutcome
+                  ? 'text-green-400'
+                  : 'text-white/30';
+                const icon = isWarning ? '⚠' : isPositiveOutcome ? '✓' : '✗';
+                const desc = s.value ? s.descTrue : s.descFalse;
+                return (
+                  <div key={s.label} className={`bg-panel border rounded-xl p-4 ${borderClass}`}>
+                    <div className="flex items-start gap-2 mb-1.5">
+                      <span className={`text-lg font-mono font-bold leading-none ${iconColor}`}>{icon}</span>
+                      <span className="font-mono text-xs text-white/65 uppercase tracking-wide leading-tight">
+                        {s.label}
+                      </span>
+                    </div>
+                    <p className={`text-[11px] font-sans leading-relaxed ${
+                      isMissing ? 'text-white/35 italic' : 'text-white/55'
+                    }`}>
+                      {desc}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+          );
+        })()}
 
         {/* Retention items */}
         {retention.items && retention.items.length > 0 && (
