@@ -839,16 +839,6 @@
       "session_recording": false,
       "description": "Free live chat software.",
       "opt_out": null
-    },
-    {
-      "domain": "tracker.test",
-      "name": "Deterministic Test Tracker",
-      "category": "Analytics",
-      "risk": "high",
-      "fingerprinting": false,
-      "session_recording": false,
-      "description": "Local deterministic test tracker used only for crawler validation.",
-      "opt_out": null
     }
   ],
   "categories": {

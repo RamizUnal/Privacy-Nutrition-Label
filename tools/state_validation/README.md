@@ -7,6 +7,11 @@
 - Validate mismatch_detected logic.
 - Establish a stable baseline before testing real websites.
 
+## Test-only tracker fixture
+- Deterministic tests use a dedicated fixture at `tools/state_validation/fixtures/trackers.test.json`.
+- The fixture is loaded via `PNL_EXTRA_TRACKER_DB`.
+- Production tracker matching still uses `backend/tracker/databases/trackers.json`.
+
 ## Hosts setup
 Add the following lines to `/etc/hosts`:
 
@@ -38,6 +43,17 @@ PASSED 7/7
 ```bash
 ./backend/venv/bin/python -m unittest discover -s backend/tests -p "test_*.py" -v
 ```
+
+## Run real-site validation
+
+```bash
+./backend/venv/bin/python tools/state_validation/real_site_validation/run_real_sites.py --repeats 3 --outdir real_site_validation_out
+```
+
+Classification meanings:
+- `ACTIONABLE`: stable repeats, no human-block indicators, usable mismatch evidence, known tracker matching available, and click verification is reliable.
+- `INCONCLUSIVE`: blocked/login/recaptcha, unusable mismatch evidence, or reject/accept click not reliably verified.
+- `UNSTABLE`: runtime outcomes vary across repeats without clear inconclusive flags.
 
 ## Interpretation rules
 - Known tracker count is based on tracker DB matching.

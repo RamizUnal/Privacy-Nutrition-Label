@@ -37,3 +37,6 @@ phase*_out/
 phase*_smoke_out/
 batch_smoke_out/
 backend/evaluation/results/
+
+# Local validation outputs
+real_site_validation_out*/

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -10,6 +11,7 @@ import tldextract
 
 _TRACKERS_CACHE: Optional[List[Dict[str, Any]]] = None
 _VENDORS_CACHE: Optional[Dict[str, Dict[str, Any]]] = None
+_TRACKERS_CACHE_KEY: Optional[Tuple[str, str]] = None
 
 
 def _host(url: str) -> Optional[str]:
@@ -31,17 +33,66 @@ def _etld1(hostname: Optional[str]) -> Optional[str]:
     return f"{ext.domain}.{ext.suffix}".lower()
 
 
-def _load_databases() -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
-    global _TRACKERS_CACHE, _VENDORS_CACHE
+def _tracker_cache_key() -> Tuple[str, str]:
+    return (
+        (os.getenv("PNL_EXTRA_TRACKER_DB") or "").strip(),
+        (os.getenv("PNL_TEST_MODE") or "").strip().lower(),
+    )
 
-    if _TRACKERS_CACHE is None:
-        trackers_path = Path(__file__).parent / "databases" / "trackers.json"
+
+def _candidate_tracker_paths() -> List[Path]:
+    base_dir = Path(__file__).parent / "databases"
+    paths: List[Path] = [base_dir / "trackers.json"]
+
+    extra_db = (os.getenv("PNL_EXTRA_TRACKER_DB") or "").strip()
+    if extra_db:
+        paths.append(Path(extra_db))
+
+    if (os.getenv("PNL_TEST_MODE") or "").strip().lower() == "true":
+        test_db = base_dir / "trackers.test.json"
+        if test_db.exists():
+            paths.append(test_db)
+
+    unique_paths: List[Path] = []
+    seen = set()
+    for path in paths:
+        key = str(path.resolve()) if path.exists() else str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_paths.append(path)
+    return unique_paths
+
+
+def _load_tracker_records() -> List[Dict[str, Any]]:
+    merged: List[Dict[str, Any]] = []
+    for tracker_path in _candidate_tracker_paths():
         try:
-            payload = json.loads(trackers_path.read_text(encoding="utf-8"))
+            payload = json.loads(tracker_path.read_text(encoding="utf-8"))
             trackers = payload.get("trackers", []) if isinstance(payload, dict) else []
-            _TRACKERS_CACHE = [item for item in trackers if isinstance(item, dict)]
+            merged.extend(item for item in trackers if isinstance(item, dict))
         except Exception:
-            _TRACKERS_CACHE = []
+            continue
+
+    deduped: List[Dict[str, Any]] = []
+    seen_domains = set()
+    for tracker in merged:
+        domain = str(tracker.get("domain") or "").lower().strip()
+        if domain:
+            if domain in seen_domains:
+                continue
+            seen_domains.add(domain)
+        deduped.append(tracker)
+    return deduped
+
+
+def _load_databases() -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    global _TRACKERS_CACHE, _VENDORS_CACHE, _TRACKERS_CACHE_KEY
+
+    cache_key = _tracker_cache_key()
+    if _TRACKERS_CACHE is None or _TRACKERS_CACHE_KEY != cache_key:
+        _TRACKERS_CACHE = _load_tracker_records()
+        _TRACKERS_CACHE_KEY = cache_key
 
     if _VENDORS_CACHE is None:
         third_parties_path = Path(__file__).parent / "databases" / "third_parties.json"

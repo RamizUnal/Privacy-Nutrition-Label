@@ -5,6 +5,15 @@ import sys
 from typing import Any
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+os.environ["PNL_TEST_MODE"] = "true"
+os.environ["PNL_EXTRA_TRACKER_DB"] = os.path.join(
+    ROOT,
+    "tools",
+    "state_validation",
+    "fixtures",
+    "trackers.test.json",
+)
+
 BACKEND = os.path.join(ROOT, "backend")
 sys.path.insert(0, BACKEND)
 
