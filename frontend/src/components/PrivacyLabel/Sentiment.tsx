@@ -36,7 +36,7 @@ function ExtractionSource({ result }: { result: AnalysisResult }) {
         Extraction source
       </div>
       <div className={`mt-1 font-mono text-sm ${isAI ? 'text-violet-300' : 'text-white/45'}`}>
-        {isAI ? 'Claude AI with policy evidence' : 'Regex/readability fallback'}
+        {isAI ? 'LLM analysis with policy evidence' : 'Regex/readability fallback'}
       </div>
     </div>
   );
