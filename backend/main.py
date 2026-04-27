@@ -465,7 +465,7 @@ async def debug_policy_discovery_for_domain(domain: str = Query(..., min_length=
 @app.get("/ai/status")
 async def ai_status():
     """Check if AI features are available."""
-    return {"available": ai_available(), "model": "llm-fast"}
+    return {"available": ai_available(), "model": "claude-haiku-4-5"}
 
 
 @app.post("/ai/analyze")
