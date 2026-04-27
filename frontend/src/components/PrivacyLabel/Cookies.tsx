@@ -99,6 +99,26 @@ export default function Cookies({ trackers, runtime }: Props) {
         </div>
       )}
 
+      {cookies.length === 0 ? (
+        // Clean empty state — no point in showing 0% security cards, empty
+        // category panels, or filter chips when there's nothing to filter.
+        <div className="bg-panel border border-border rounded-xl p-8 text-center">
+          <div className="font-mono text-xs text-white/35 uppercase tracking-wider mb-2">
+            Static HTTP cookie detection
+          </div>
+          <p className="font-mono text-sm text-white/45">
+            {runtimeCookieTotal > 0
+              ? 'No cookies were set in the initial HTTP response.'
+              : 'No cookies detected.'}
+          </p>
+          {runtimeCookieTotal > 0 && (
+            <p className="font-mono text-xs text-white/30 mt-2">
+              The runtime browser crawl observed {runtimeCookieTotal} cookies — see the panel above.
+            </p>
+          )}
+        </div>
+      ) : (
+      <>
       <div className="font-mono text-[11px] text-white/40 uppercase tracking-wider">Static HTTP cookie detection</div>
 
       {/* Security metrics */}
@@ -229,11 +249,13 @@ export default function Cookies({ trackers, runtime }: Props) {
           )}
         </div>
       ) : (
+        // Filter narrowed everything out (e.g. user clicked "advertising" but
+        // there are none). The full empty-page case is handled above.
         <div className="text-center py-8 text-white/30 font-mono text-sm">
-          {runtimeCookieTotal > 0
-            ? 'No static cookies were detected from the initial HTTP response, but runtime crawl observed cookies.'
-            : 'No cookies detected or page was not accessible.'}
+          No cookies in the “{filter}” category.
         </div>
+      )}
+      </>
       )}
     </div>
   );

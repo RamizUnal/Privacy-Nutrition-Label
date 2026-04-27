@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { AnalysisResult } from '../../types';
-import { RadialBarChart, RadialBar, ResponsiveContainer } from 'recharts';
+import { RadialBarChart, RadialBar, ResponsiveContainer, PolarAngleAxis } from 'recharts';
 import DiscoveryDebugPanel from './DiscoveryDebugPanel';
 
 // Each dimension's score is computed as:
@@ -170,15 +170,22 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
             <span className="font-mono text-sm text-white/60 truncate max-w-[180px]">{result.domain}</span>
           </div>
 
-          {/* Radial score */}
+          {/* Radial score — domain pinned to 0–100 so the arc fills proportionally
+              to the score (56 paints just over half the ring, not the whole one). */}
           <div className="relative w-44 h-44">
             <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart
                 cx="50%" cy="50%"
                 innerRadius="70%" outerRadius="100%"
-                startAngle={180} endAngle={-180}
+                startAngle={90} endAngle={-270}
                 data={chartData}
               >
+                <PolarAngleAxis
+                  type="number"
+                  domain={[0, 100]}
+                  tick={false}
+                  axisLine={false}
+                />
                 <RadialBar
                   dataKey="value"
                   cornerRadius={8}
