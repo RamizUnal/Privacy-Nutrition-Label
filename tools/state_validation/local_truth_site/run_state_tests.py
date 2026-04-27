@@ -4,7 +4,7 @@ import os
 import sys
 from typing import Any
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 BACKEND = os.path.join(ROOT, "backend")
 sys.path.insert(0, BACKEND)
 
