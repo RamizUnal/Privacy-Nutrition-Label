@@ -40,3 +40,4 @@ backend/evaluation/results/
 
 # Local validation outputs
 real_site_validation_out*/
+*.bak

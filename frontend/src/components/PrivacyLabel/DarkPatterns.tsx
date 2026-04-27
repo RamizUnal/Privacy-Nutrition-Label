@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
-import type { DarkPatternAnalysis, DarkPattern } from '../../types';
+import type { AnalysisResult, DarkPatternAnalysis, DarkPattern } from '../../types';
+import PolicyTextPanel from './PolicyTextPanel';
 
-interface Props { analysis: DarkPatternAnalysis; }
+interface Props {
+  analysis: DarkPatternAnalysis;
+  result: AnalysisResult;
+}
 
 const SEVERITY_COLORS: Record<string, string> = {
   high: '#ff1744', medium: '#ff9100', low: '#ffd740',
@@ -14,15 +18,45 @@ const RISK_CONFIG: Record<string, { color: string; icon: string; label: string }
   none: { color: '#00e676', icon: '✓', label: 'None Detected' },
 };
 
-export default function DarkPatterns({ analysis }: Props) {
+function ExtractionSource({ result }: { result: AnalysisResult }) {
+  const source = result.ai_extraction?.dark_patterns_source;
+  const isAI = source === 'ai';
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${
+      isAI ? 'border-violet-500/30 bg-violet-950/15' : 'border-white/10 bg-panel'
+    }`}>
+      <div className="font-mono text-xs uppercase tracking-wider text-white/35">
+        Extraction source
+      </div>
+      <div className={`mt-1 font-mono text-sm ${isAI ? 'text-violet-300' : 'text-white/45'}`}>
+        {isAI ? 'LLM analysis with policy quotes' : 'Pattern fallback'}
+      </div>
+    </div>
+  );
+}
+
+export default function DarkPatterns({ analysis, result }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  if (!analysis) return <div className="text-center py-16 text-white/30 font-mono text-sm">Dark pattern data unavailable.</div>;
+  if (!analysis) {
+    return (
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)] gap-6 items-start">
+        <div className="text-center py-16 text-white/30 font-mono text-sm">Dark pattern data unavailable.</div>
+        <div className="xl:sticky xl:top-32">
+          <PolicyTextPanel result={result} />
+        </div>
+      </div>
+    );
+  }
 
   const riskConfig = RISK_CONFIG[analysis.overall_risk] || RISK_CONFIG.none;
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)] gap-6 items-start">
+      <div className="space-y-6">
+        <ExtractionSource result={result} />
+
       {/* Overall risk */}
       <div className="bg-panel border rounded-xl p-6 flex items-center gap-6" style={{ borderColor: `${riskConfig.color}30` }}>
         <div className="text-5xl">{riskConfig.icon}</div>
@@ -143,6 +177,11 @@ export default function DarkPatterns({ analysis }: Props) {
             </div>
           ))}
         </div>
+      </div>
+      </div>
+
+      <div className="xl:sticky xl:top-32">
+        <PolicyTextPanel result={result} />
       </div>
     </div>
   );

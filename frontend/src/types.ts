@@ -310,10 +310,18 @@ export interface MismatchAnalysis {
 export interface AIExtractionMeta {
   enabled: boolean;
   used: boolean;
+  complete?: boolean;
+  version?: number;
   reason?: string;
   data_categories_source?: 'ai' | 'fallback_regex';
   third_parties_source?: 'ai' | 'fallback_regex';
+  retention_source?: 'ai' | 'fallback_regex';
+  dark_patterns_source?: 'ai' | 'fallback_regex';
+  rights_source?: 'ai' | 'fallback_regex';
+  transparency_source?: 'ai' | 'fallback_regex';
   policy_chars_sent?: number;
+  attempts?: Record<string, { attempt?: string; raw_response_chars?: number }>;
+  errors?: string[];
 }
 
 export interface AnalysisResult {
@@ -425,12 +433,20 @@ export interface AIComplianceGap {
 export interface PolicyAIAnalysis {
   plain_summary: string;
   tldr: string;
+  privacy_posture?: string;
   headline_risks: string[];
   red_flags: AIRedFlag[];
   positive_findings: string[];
   compliance_gaps: AIComplianceGap[];
   user_rights_summary: string;
   recommended_actions: string[];
+  quick_wins?: string[];
+  important_quotes?: Array<{
+    label: string;
+    quote: string;
+    why_it_matters: string;
+  }>;
+  confidence_notes?: string[];
   risk_narrative: string;
   data_story: string;
   ai_score_commentary: string;

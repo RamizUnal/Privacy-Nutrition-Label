@@ -186,6 +186,7 @@ KNOWN_POLICY_URLS = {
     "tiktok.com": "https://www.tiktok.com/legal/page/row/privacy-policy/en",
     "twitch.tv": "https://www.twitch.tv/p/legal/privacy-notice/",
     "twitter.com": "https://x.com/en/privacy",
+    "walmart.com": "https://corporate.walmart.com/privacy-security/walmart-privacy-notice",
     "whatsapp.com": "https://www.whatsapp.com/legal/privacy-policy",
     "x.com": "https://x.com/en/privacy",
     "yahoo.com": "https://legal.yahoo.com/us/en/yahoo/privacy/index.htm",
@@ -195,6 +196,7 @@ KNOWN_POLICY_URLS = {
 
 DOMAIN_ALIASES = {
     "rockstar.com": "rockstargames.com",
+    "wallmart.com": "walmart.com",
 }
 
 NON_PRIVACY_LEGAL_SIGNALS = [
@@ -304,12 +306,32 @@ def normalize_url(url: str) -> str:
 
 def extract_domain(url: str) -> str:
     parsed = urlparse(normalize_url(url))
-    return parsed.netloc.lstrip("www.")
+    host = parsed.netloc.split(":", 1)[0].lower().strip(".")
+    return host[4:] if host.startswith("www.") else host
 
 
 def base_url(url: str) -> str:
     parsed = urlparse(normalize_url(url))
     return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _canonicalize_alias_url(url: str) -> str:
+    parsed = urlparse(normalize_url(url))
+    host = _normalize_host(parsed.netloc)
+    registrable = _registrable_domain(host)
+    aliased = DOMAIN_ALIASES.get(host) or DOMAIN_ALIASES.get(registrable)
+    if not aliased:
+        return parsed.geturl().rstrip("/")
+
+    if host == registrable:
+        new_host = aliased
+    elif host.endswith("." + registrable):
+        prefix = host[: -len("." + registrable)]
+        new_host = f"{prefix}.{aliased}" if prefix else aliased
+    else:
+        new_host = aliased
+
+    return parsed._replace(netloc=new_host).geturl().rstrip("/")
 
 
 def _normalized_path(url: str) -> str:
@@ -398,6 +420,10 @@ def _lookup_known_policies(domain: str) -> List[str]:
     if _skip_known_policy_urls():
         return []
 
+    return _lookup_known_policies_raw(domain)
+
+
+def _lookup_known_policies_raw(domain: str) -> List[str]:
     host = (domain or "").lower().split(":", 1)[0]
     if host.startswith("www."):
         host = host[4:]
@@ -413,6 +439,26 @@ def _lookup_known_policies(domain: str) -> List[str]:
     if isinstance(value, str):
         return [value]
     return [url for url in value if isinstance(url, str)]
+
+
+def _official_policy_hosts_for_domain(domain: str) -> Set[str]:
+    hosts: Set[str] = set()
+    for policy_url in _lookup_known_policies_raw(domain):
+        parsed = urlparse(policy_url)
+        host = _normalize_host(parsed.netloc)
+        if host:
+            hosts.add(host)
+    return hosts
+
+
+def _is_official_policy_host(result_host: str, target_host: str) -> bool:
+    result_host = _normalize_host(result_host)
+    if not result_host:
+        return False
+    for policy_host in _official_policy_hosts_for_domain(target_host):
+        if result_host == policy_host or result_host.endswith("." + policy_host):
+            return True
+    return False
 
 
 def _lookup_known_policy(domain: str) -> Optional[str]:
@@ -1155,11 +1201,13 @@ def _is_brand_related_host(result_host: str, target_host: str) -> bool:
     target_host = _normalize_host(target_host)
     target_stem = _domain_stem(target_host)
     result_stem = _domain_stem(result_host)
-    return (
-        target_stem == result_stem
-        or result_stem.startswith(target_stem)
-        or target_stem in result_stem
-    )
+    explicit_related_stems = {
+        "steam": {"steampowered"},
+        "rockstar": {"rockstargames"},
+        "snapchat": {"snap"},
+        "twitter": {"x"},
+    }
+    return target_stem == result_stem or result_stem in explicit_related_stems.get(target_stem, set())
 
 
 def _is_primary_policy_path(path: str) -> bool:
@@ -1205,6 +1253,7 @@ def _score_search_result(
     same_domain = _same_registered_domain(url, target_url)
     target_match = _is_target_host_match(host, domain)
     brand_related = _is_brand_related_host(host, domain)
+    official_policy_host = _is_official_policy_host(host, domain)
     related_domain = brand_related and not same_domain and not target_match
 
     noisy_result_signals = [
@@ -1232,11 +1281,13 @@ def _score_search_result(
     if "/faqs/" in path and not _is_primary_policy_path(path):
         return -100
 
-    if related_domain and rank > 0:
+    if related_domain and rank > 0 and not official_policy_host:
         return -100
-    if not (target_match or same_domain or brand_related):
+    if not (target_match or same_domain or brand_related or official_policy_host):
         return -100
 
+    if official_policy_host:
+        score += 36
     if same_domain:
         score += 12
     if target_match:
@@ -1273,7 +1324,7 @@ def _pick_search_candidates(
     domain: str,
     limit: int = 5,
 ) -> List[str]:
-    candidates: List[str] = []
+    candidates: List[Tuple[int, int, str]] = []
     seen: Set[str] = set()
 
     for rank, (raw_url, title, snippet) in enumerate(rows):
@@ -1284,9 +1335,10 @@ def _pick_search_candidates(
 
         score = _score_search_result(url, title, snippet, domain, rank=rank)
         if score > 0:
-            candidates.append(url)
+            candidates.append((score, rank, url))
 
-    return candidates[:limit]
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    return [url for _score, _rank, url in candidates[:limit]]
 
 
 def _extract_json_array(text: str) -> Optional[List[str]]:
@@ -1336,6 +1388,31 @@ def _merge_search_candidates(*groups: List[str], limit: int = 5) -> List[str]:
     return merged
 
 
+def _rank_search_candidates(
+    candidates: List[str],
+    rows: List[Tuple[str, str, str]],
+    domain: str,
+    limit: int = 5,
+) -> List[str]:
+    row_lookup = {}
+    for rank, (raw_url, title, snippet) in enumerate(rows):
+        url = _unwrap_search_result_url(raw_url)
+        if not url:
+            continue
+        row_lookup[_search_candidate_key(url)] = (title, snippet, rank)
+
+    scored: List[Tuple[int, int, int, str]] = []
+    for index, url in enumerate(candidates):
+        title, snippet, rank = row_lookup.get(_search_candidate_key(url), ("", "", 999))
+        score = _score_search_result(url, title, snippet, domain, rank=rank)
+        if score <= 0:
+            continue
+        scored.append((score, rank, index, url))
+
+    scored.sort(key=lambda item: (-item[0], item[1], item[2]))
+    return [url for _score, _rank, _index, url in scored[:limit]]
+
+
 async def _ai_pick_search_candidates(
     rows: List[Tuple[str, str, str]],
     domain: str,
@@ -1352,22 +1429,25 @@ async def _ai_pick_search_candidates(
 
     normalized_rows = []
     seen: Set[str] = set()
-    for raw_url, title, snippet in rows[:10]:
+    for rank, (raw_url, title, snippet) in enumerate(rows[:10]):
         url = _unwrap_search_result_url(raw_url)
         if not url or url in seen:
             continue
         seen.add(url)
-        normalized_rows.append((url, title.strip(), snippet.strip()))
+        normalized_rows.append((url, title.strip(), snippet.strip(), rank))
 
     if not normalized_rows:
         return []
 
     results_text = "\n".join(
         f"{i}. URL: {url}\n   TITLE: {title}\n   SNIPPET: {snippet}"
-        for i, (url, title, snippet) in enumerate(normalized_rows, start=1)
+        for i, (url, title, snippet, _rank) in enumerate(normalized_rows, start=1)
     )
+    official_hosts = sorted(_official_policy_hosts_for_domain(domain))
+    official_hosts_text = ", ".join(official_hosts) if official_hosts else "none"
     prompt = f"""
 Target website/domain: {domain}
+Official policy hosts allowed if Brave returns them: {official_hosts_text}
 
 Brave Search results:
 {results_text}
@@ -1377,6 +1457,11 @@ Return a JSON array of up to {limit} URLs from the search results, ordered best 
 
 Rules:
 - Prefer the primary policy/privacy notice that applies to the target website's ordinary users.
+- Reject lookalike or typo domains. A URL must be on the same registered domain,
+  a helpful subdomain, an explicitly related official domain for the target brand,
+  or one of the official policy hosts listed above.
+- If an official policy host is listed above and Brave returned a primary privacy URL
+  on that host, prefer it over weaker explainer/help/privacy-center pages.
 - Related official domains are allowed when clearly the same brand/service
   (example: steam.com may use store.steampowered.com).
 - For subdomains, preserve the subdomain intent
@@ -1405,8 +1490,8 @@ Rules:
         return []
 
     allowed = {
-        _search_candidate_key(url): (url, title, snippet)
-        for url, title, snippet in normalized_rows
+        _search_candidate_key(url): (url, title, snippet, rank)
+        for url, title, snippet, rank in normalized_rows
     }
     candidates: List[str] = []
     for url in picked:
@@ -1416,15 +1501,17 @@ Rules:
         allowed_row = allowed.get(_search_candidate_key(unwrapped))
         if not allowed_row:
             continue
-        allowed_url, title, snippet = allowed_row
+        allowed_url, title, snippet, rank = allowed_row
         path = urlparse(allowed_url).path.lower()
         blob = f"{allowed_url}\n{title}\n{snippet}".lower()
+        search_score = _score_search_result(allowed_url, title, snippet, domain, rank=rank)
         if (
             _url_is_non_privacy_legal(allowed_url)
             or _url_is_terms_only_candidate(allowed_url)
             or _url_is_interstitial(allowed_url)
             or _looks_like_product_or_listing_url(allowed_url)
             or not _search_result_mentions_privacy(allowed_url, title, snippet)
+            or search_score <= 0
             or "/eula/" in path
             or "subscriber_agreement" in path
             or "update-privacy-policy" in blob
@@ -1478,7 +1565,11 @@ async def _brave_search_query(
     ]
     ai_candidates = await _ai_pick_search_candidates(rows, domain)
     heuristic_candidates = _pick_search_candidates(rows, domain)
-    return _merge_search_candidates(ai_candidates, heuristic_candidates)
+    return _rank_search_candidates(
+        _merge_search_candidates(ai_candidates, heuristic_candidates),
+        rows,
+        domain,
+    )
 
 
 async def debug_brave_search_candidates(client: httpx.AsyncClient, domain: str) -> dict:
@@ -1525,14 +1616,35 @@ async def debug_brave_search_candidates(client: httpx.AsyncClient, domain: str) 
     ]
     ai_candidates = await _ai_pick_search_candidates(rows, domain)
     heuristic_candidates = _pick_search_candidates(rows, domain)
+    combined_candidates = _rank_search_candidates(
+        _merge_search_candidates(ai_candidates, heuristic_candidates),
+        rows,
+        domain,
+    )
     return {
         "query": query,
+        "official_policy_hosts": sorted(_official_policy_hosts_for_domain(domain)),
         "ai_candidates": ai_candidates,
         "heuristic_candidates": heuristic_candidates,
-        "combined_candidates": _merge_search_candidates(ai_candidates, heuristic_candidates),
+        "combined_candidates": combined_candidates,
         "raw_results": [
-            {"url": url, "title": title, "description": snippet}
-            for url, title, snippet in rows
+            {
+                "url": url,
+                "title": title,
+                "description": snippet,
+                "heuristic_score": _score_search_result(
+                    _unwrap_search_result_url(url) or url,
+                    title,
+                    snippet,
+                    domain,
+                    rank=rank,
+                ),
+                "official_policy_host": _is_official_policy_host(
+                    urlparse(_unwrap_search_result_url(url) or url).netloc,
+                    domain,
+                ),
+            }
+            for rank, (url, title, snippet) in enumerate(rows)
         ],
     }
 
@@ -1840,7 +1952,7 @@ async def fetch_policy_tree(
 
 async def crawl_website(url: str) -> CrawlResult:
     result = CrawlResult()
-    url = normalize_url(url)
+    url = _canonicalize_alias_url(url)
     base = base_url(url)
     domain = extract_domain(base)
 

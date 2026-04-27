@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
-import type { RightsAnalysis, RightCoverage } from '../../types';
+import type { AnalysisResult, RightsAnalysis, RightCoverage } from '../../types';
+import PolicyTextPanel from './PolicyTextPanel';
 
-interface Props { rights: RightsAnalysis; }
+interface Props {
+  rights: RightsAnalysis;
+  result: AnalysisResult;
+}
 
 function RightRow({ right }: { right: RightCoverage }) {
   const [expanded, setExpanded] = useState(false);
@@ -48,10 +52,37 @@ function RightRow({ right }: { right: RightCoverage }) {
   );
 }
 
-export default function Rights({ rights }: Props) {
+function ExtractionSource({ result }: { result: AnalysisResult }) {
+  const source = result.ai_extraction?.rights_source;
+  const isAI = source === 'ai';
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${
+      isAI ? 'border-violet-500/30 bg-violet-950/15' : 'border-white/10 bg-panel'
+    }`}>
+      <div className="font-mono text-xs uppercase tracking-wider text-white/35">
+        Extraction source
+      </div>
+      <div className={`mt-1 font-mono text-sm ${isAI ? 'text-violet-300' : 'text-white/45'}`}>
+        {isAI ? 'LLM analysis with policy quotes' : 'Regex fallback'}
+      </div>
+    </div>
+  );
+}
+
+export default function Rights({ rights, result }: Props) {
   const [view, setView] = useState<'gdpr' | 'ccpa'>('gdpr');
 
-  if (!rights) return <div className="text-center py-16 text-white/30 font-mono text-sm">Rights data unavailable.</div>;
+  if (!rights) {
+    return (
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)] gap-6 items-start">
+        <div className="text-center py-16 text-white/30 font-mono text-sm">Rights data unavailable.</div>
+        <div className="xl:sticky xl:top-32">
+          <PolicyTextPanel result={result} />
+        </div>
+      </div>
+    );
+  }
 
   const gdprItems = Object.values(rights.gdpr || {});
   const ccpaItems = Object.values(rights.ccpa || {});
@@ -70,7 +101,10 @@ export default function Rights({ rights }: Props) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)] gap-6 items-start">
+      <div className="space-y-6">
+        <ExtractionSource result={result} />
+
       {/* Score overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="bg-panel border border-border rounded-xl p-5">
@@ -160,6 +194,11 @@ export default function Rights({ rights }: Props) {
           </div>
         </div>
       )}
+      </div>
+
+      <div className="xl:sticky xl:top-32">
+        <PolicyTextPanel result={result} />
+      </div>
     </div>
   );
 }

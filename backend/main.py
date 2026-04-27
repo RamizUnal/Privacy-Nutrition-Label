@@ -126,7 +126,7 @@ def _cached_result_matches_enabled_features(result_json: dict) -> bool:
         meta = result_json.get("ai_extraction") or {}
         if meta.get("version") != AI_POLICY_EXTRACTION_VERSION:
             return False
-        if meta.get("used") is not True:
+        if meta.get("complete") is not True:
             return False
     return True
 
@@ -269,11 +269,23 @@ async def analyze_website(
                 policy_text=policy_text,
                 fallback_data_types=data_types,
                 fallback_third_parties=third_parties,
+                fallback_retention=retention,
+                fallback_dark_patterns=dark_patterns,
+                fallback_rights=rights,
+                fallback_sentiment=sentiment,
             )
             data_types = ai_entities.data_types
             third_parties = ai_entities.third_parties
+            retention = ai_entities.retention
+            dark_patterns = ai_entities.dark_patterns
+            rights = ai_entities.rights
+            sentiment = ai_entities.sentiment
             analysis_dict["data_types"] = _dc(data_types)
             analysis_dict["third_parties"] = _dc(third_parties)
+            analysis_dict["retention"] = _dc(retention)
+            analysis_dict["dark_patterns"] = _dc(dark_patterns)
+            analysis_dict["rights"] = _dc(rights)
+            analysis_dict["sentiment"] = _dc(sentiment)
             analysis_dict["ai_extraction"] = ai_entities.meta
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
@@ -511,12 +523,18 @@ async def ai_chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
     """Stream a privacy assistant chat response using SSE."""
     cached = await get_latest_analysis(db, req.domain)
     result_json = cached.result_json if (cached and cached.result_json) else {}
+    policy_text = ""
+    if cached and cached.policy_version_id:
+        try:
+            policy_text = await get_policy_text(db, cached.policy_version_id) or ""
+        except Exception:
+            policy_text = ""
 
     conversation = [{"role": m.role, "content": m.content} for m in req.messages]
 
     async def generate():
         try:
-            async for chunk in stream_chat_response(req.domain, result_json, conversation):
+            async for chunk in stream_chat_response(req.domain, result_json, conversation, policy_text):
                 # Escape newlines in SSE data
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"data: {safe_chunk}\n\n"

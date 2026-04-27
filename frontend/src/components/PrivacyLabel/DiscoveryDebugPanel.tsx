@@ -53,7 +53,7 @@ export default function DiscoveryDebugPanel({ domain }: Props) {
       {open && (
         <div className="mt-3 space-y-3 rounded border border-border/80 bg-bg/40 p-3">
           {loading && (
-            <div className="font-mono text-[11px] text-white/35">Loading Brave and Claude trace...</div>
+            <div className="font-mono text-[11px] text-white/35">Loading search and AI trace...</div>
           )}
 
           {!loading && error && (
@@ -68,7 +68,7 @@ export default function DiscoveryDebugPanel({ domain }: Props) {
                   <div className="truncate text-amber-300" title={debug.query}>{debug.query}</div>
                 </div>
                 <div>
-                  <div className="text-white/25">Claude</div>
+                  <div className="text-white/25">AI Rerank</div>
                   <div className={debug.claude_configured ? 'text-violet-300' : 'text-white/35'}>
                     {debug.claude_configured && debug.claude_rerank_enabled ? 'ranking on' : 'not used'}
                   </div>
@@ -77,9 +77,9 @@ export default function DiscoveryDebugPanel({ domain }: Props) {
 
               <div>
                 <div className="mb-1 font-mono text-[11px] uppercase tracking-wider text-violet-300/70">
-                  Claude picked
+                  AI picked
                 </div>
-                <UrlList urls={debug.ai_candidates} empty="No Claude pick returned." />
+                <UrlList urls={debug.ai_candidates} empty="No AI pick returned." />
               </div>
 
               <div>

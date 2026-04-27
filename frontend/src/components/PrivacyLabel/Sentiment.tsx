@@ -1,8 +1,12 @@
 import React from 'react';
-import type { SentimentResult } from '../../types';
+import type { AnalysisResult, SentimentResult } from '../../types';
 import { RadarChart, PolarGrid, PolarAngleAxis, Radar, ResponsiveContainer } from 'recharts';
+import PolicyTextPanel from './PolicyTextPanel';
 
-interface Props { sentiment: SentimentResult; }
+interface Props {
+  sentiment: SentimentResult;
+  result: AnalysisResult;
+}
 
 const TRANSPARENCY_CONFIG: Record<string, { color: string; label: string; description: string }> = {
   high: { color: '#00e676', label: 'High Transparency', description: 'Policy is specific, accountable, and clearly written.' },
@@ -20,8 +24,35 @@ const ACCOUNTABILITY_LABELS: Record<string, string> = {
   security_measures: 'Security Measures Described',
 };
 
-export default function Sentiment({ sentiment }: Props) {
-  if (!sentiment) return <div className="text-center py-16 text-white/30 font-mono text-sm">Transparency data unavailable.</div>;
+function ExtractionSource({ result }: { result: AnalysisResult }) {
+  const source = result.ai_extraction?.transparency_source;
+  const isAI = source === 'ai';
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${
+      isAI ? 'border-violet-500/30 bg-violet-950/15' : 'border-white/10 bg-panel'
+    }`}>
+      <div className="font-mono text-xs uppercase tracking-wider text-white/35">
+        Extraction source
+      </div>
+      <div className={`mt-1 font-mono text-sm ${isAI ? 'text-violet-300' : 'text-white/45'}`}>
+        {isAI ? 'LLM analysis with policy evidence' : 'Regex/readability fallback'}
+      </div>
+    </div>
+  );
+}
+
+export default function Sentiment({ sentiment, result }: Props) {
+  if (!sentiment) {
+    return (
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)] gap-6 items-start">
+        <div className="text-center py-16 text-white/30 font-mono text-sm">Transparency data unavailable.</div>
+        <div className="xl:sticky xl:top-32">
+          <PolicyTextPanel result={result} />
+        </div>
+      </div>
+    );
+  }
 
   const config = TRANSPARENCY_CONFIG[sentiment.overall_transparency] || TRANSPARENCY_CONFIG.low;
 
@@ -49,7 +80,10 @@ export default function Sentiment({ sentiment }: Props) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)] gap-6 items-start">
+      <div className="space-y-6">
+        <ExtractionSource result={result} />
+
       {/* Overall */}
       <div className="bg-panel border rounded-xl p-6 flex items-start gap-6" style={{ borderColor: `${config.color}30` }}>
         <div
@@ -181,6 +215,11 @@ export default function Sentiment({ sentiment }: Props) {
             {(sentiment.passive_voice_ratio * 100).toFixed(0)}% passive
           </span>
         </div>
+      </div>
+      </div>
+
+      <div className="xl:sticky xl:top-32">
+        <PolicyTextPanel result={result} />
       </div>
     </div>
   );

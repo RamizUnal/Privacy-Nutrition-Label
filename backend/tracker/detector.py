@@ -169,8 +169,8 @@ def _extract_domain(url: str) -> str:
     try:
         parsed = urlparse(url)
         host = parsed.netloc or parsed.path
-        # Strip www.
-        return host.lstrip("www.").split(":")[0]
+        host = host.split(":", 1)[0].lower().strip(".")
+        return host[4:] if host.startswith("www.") else host
     except Exception:
         return ""
 
