@@ -106,4 +106,4 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.local.remove(`trackers_${tabId}`);
 });
 
-console.log('Privacy Nutrition Label – background worker started');
+console.log('Privacy Lens – background worker started');
