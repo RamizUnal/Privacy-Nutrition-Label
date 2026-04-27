@@ -40,7 +40,7 @@ from analyzer.third_party_analyzer import (
 )
 from ai.claude_client import FAST_MODEL, acomplete
 
-AI_POLICY_EXTRACTION_VERSION = 5
+AI_POLICY_EXTRACTION_VERSION = 7
 
 
 @dataclass
@@ -385,22 +385,19 @@ def _retention_rating(days: int | None, period_type: str, is_vague: bool) -> tup
     return "very_poor", f">{days // 365} years"
 
 
-def _overall_retention_rating(items: List[RetentionItem]) -> str:
+def _overall_retention_rating(
+    items: List[RetentionItem],
+    *,
+    has_indefinite_retention: bool = False,
+) -> str:
+    if has_indefinite_retention:
+        return "very_poor"
     if not items:
         return "very_poor"
-    if all(item.is_vague for item in items):
-        return "very_poor"
-    scores = {"excellent": 5, "good": 4, "fair": 3, "poor": 2, "very_poor": 1, "unknown": 0}
-    avg = sum(scores.get(item.rating, 0) for item in items) / len(items)
-    if avg >= 4.5:
-        return "excellent"
-    if avg >= 3.5:
-        return "good"
-    if avg >= 2.5:
-        return "fair"
-    if avg >= 1.5:
-        return "poor"
-    return "very_poor"
+    # Retention is scored by the worst extracted retention posture, not by
+    # Claude's self-assigned summary label.
+    scores = {"unknown": 0, "very_poor": 1, "poor": 2, "fair": 3, "good": 4, "excellent": 5}
+    return min(items, key=lambda item: scores.get(item.rating, 0)).rating
 
 
 def _build_ai_retention(payload: Any, source_text: str) -> RetentionAnalysis | None:
@@ -443,27 +440,27 @@ def _build_ai_retention(payload: Any, source_text: str) -> RetentionAnalysis | N
             if len(items) >= 20:
                 break
 
-    days_values = [item.period_days for item in items if item.period_days is not None]
-    allowed_overall = {"excellent", "good", "fair", "poor", "very_poor", "unknown"}
-    overall = str(payload.get("overall_rating", "")).strip().lower()
-    if overall not in allowed_overall:
-        overall = _overall_retention_rating(items)
-
     has_event = any(item.period_type == "event_based" for item in items)
     has_specific = any(item.period_type == "specific" for item in items)
     deletion_on_request = _as_bool(payload.get("deletion_on_request")) or any(
         "request" in item.period_text.lower() or "request" in item.context.lower()
         for item in items
     )
+    has_indefinite = _as_bool(payload.get("has_indefinite_retention")) or any(
+        "indefinite" in item.period_text.lower() or "indefinite" in item.context.lower()
+        for item in items
+    )
+    days_values = [item.period_days for item in items if item.period_days is not None]
+    overall = _overall_retention_rating(
+        items,
+        has_indefinite_retention=has_indefinite,
+    )
 
     return RetentionAnalysis(
         items=items,
         overall_rating=overall,
         has_vague_retention=any(item.is_vague for item in items),
-        has_indefinite_retention=_as_bool(payload.get("has_indefinite_retention")) or any(
-            "indefinite" in item.period_text.lower() or "indefinite" in item.context.lower()
-            for item in items
-        ),
+        has_indefinite_retention=has_indefinite,
         has_event_based_deletion=has_event,
         has_specific_periods=has_specific,
         has_deletion_policy=deletion_on_request or has_event,
@@ -670,10 +667,18 @@ Use ONLY the allowed data category IDs below. Do not invent category IDs.
 Count a data category only when the policy says the site/service collects, receives,
 uses, stores, or processes that user data. Do not count examples from user rights,
 security disclaimers, or hypothetical legal text unless they describe actual collection.
+Be exhaustive and strict: include every supported data category and every recipient
+category with direct evidence, including sensitive data, device/browser identifiers,
+tracking data, advertising identifiers, affiliates, service providers, analytics
+providers, ad partners, and legal/government disclosures. Do not soften the result
+because wording is common or industry-standard.
 
 For third parties, extract recipients of user data. Exclude {domain}, the site itself,
 and obvious first-party/parent-company references unless the policy clearly says data
 is shared with separate affiliates or external recipients.
+Treat "share", "disclose", "transfer", "make available", "sell", "targeted advertising",
+and "cross-context behavioral advertising" as third-party sharing signals when the
+policy connects them to personal data.
 
 Every item MUST include exact short quotes copied from the policy text.
 Keep the output compact:
@@ -756,6 +761,13 @@ Analyze this privacy policy for {domain} for retention, dark patterns, user righ
 
 Use only facts directly stated in the policy. Every positive finding that needs evidence
 must include exact short quote(s) copied from the policy text. Do not invent quotes.
+This output feeds the privacy score directly. You are the scoring analyzer for these sections,
+so be realistic, strict, and evidence-led:
+- Do not award credit for generic legal boilerplate, vague "may have rights" text, or broad promises without a usable mechanism.
+- Retention must reflect the worst meaningful retention posture. If the policy has both specific periods and vague/indefinite clauses, report the vague/indefinite risk too.
+- Transparency should be penalized for broad terms like "business purposes", "as necessary", "affiliates", "partners", "may disclose", "from time to time", and "including but not limited to".
+- Dark patterns should include consent-by-use, hidden opt-out, bundled consent, obstruction, broad opt-out friction, or manipulative consent language when directly supported by text.
+- Rights are covered only when the policy explicitly names or clearly describes the right AND gives enough detail for a user to exercise or understand it. A quote that only says users "may have certain rights" is never enough.
 
 Allowed dark pattern types:
 {dark_rows}
@@ -781,7 +793,6 @@ Return ONLY valid JSON with this schema:
         "evidence": "exact short quote from policy"
       }}
     ],
-    "overall_rating": "excellent|good|fair|poor|very_poor|unknown",
     "has_indefinite_retention": false,
     "deletion_on_request": false,
     "storage_limitation_mentioned": false
@@ -839,10 +850,12 @@ Return ONLY valid JSON with this schema:
 
 Rules:
 - Return at most {max_retention} retention items.
+- Do not return a retention overall_rating; the backend computes it from the extracted retention items and flags.
 - Return at most {max_dark} dark pattern findings.
 - Dark patterns must use only allowed pattern_type values.
 - Rights must use only listed GDPR/CCPA IDs.
-- For rights, set covered true only with direct evidence.
+- For rights, set covered true only with direct evidence that is specific and actionable. The evidence must identify the specific right and the usable request, opt-out, appeal, complaint, contact, portal, or equivalent mechanism/scope. Vague statements such as "you may have certain rights" should be covered=false.
+- For transparency_score, 100 means unusually specific and low-vague. Policies with many broad sharing or retention clauses should usually be below 60.
 - Do not include markdown, comments, explanations, or trailing commas.
 
 POLICY TEXT:
@@ -895,6 +908,7 @@ async def extract_policy_entities_ai(
         "complete": False,
         "version": AI_POLICY_EXTRACTION_VERSION,
         "policy_chars_sent": len(policy_excerpt),
+        "analysis_mode": "strict_ai_primary",
     }
 
     try:
