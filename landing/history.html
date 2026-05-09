@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>History — Privacy Label</title>
+<meta name="description" content="Every policy change, every score delta — versioned, hashed, and pinned to its source." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Inter:wght@300;400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="page">
+
+  <header class="topbar">
+    <div class="l">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h10v13l-5-3-5 3V2z"/></svg>
+      <span>Section &mdash; Version History</span>
+    </div>
+    <div class="r">
+      <span>v1 &rarr; v18</span>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5L10 10"/></svg>
+    </div>
+  </header>
+
+  <section class="hero-card reveal in">
+    <div class="hero-bg tone-history" aria-hidden="true"></div>
+    <div class="hero-inner short">
+      <div class="hero-top">
+        <a href="index.html" class="brand">
+          <span class="brand-mark"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h6v6H2zM10 2h4v4h-4zM10 8h4v6h-4zM2 10h6v4H2z"/></svg></span>
+          <span>Privacy Label</span>
+        </a>
+        <nav class="seg">
+          <a href="index.html" data-tip="Overview"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg></a>
+          <a href="trackers.html" data-tip="Trackers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/></svg></a>
+          <a href="cookies.html" data-tip="Cookies"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 9 9c-3 0-5-2-5-4 0-3-2-5-4-5z"/><circle cx="9" cy="10" r=".9" fill="currentColor"/><circle cx="14" cy="14" r=".9" fill="currentColor"/><circle cx="10" cy="16" r=".9" fill="currentColor"/></svg></a>
+          <a href="history.html" class="on" data-tip="History"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2.5"/></svg></a>
+          <a href="account.html" data-tip="Account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="9" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></a>
+        </nav>
+        <a href="#cta" class="pill pill-white">Watch a domain</a>
+      </div>
+
+      <div class="hero-copy short-copy">
+        <div class="badge reveal in" data-d="1">
+          Watching
+          <span class="chip">
+            <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="3"/></svg>
+            12 domains &middot; 84 versions
+          </span>
+        </div>
+        <h1 class="reveal in" data-d="2">
+          Every clause<br/>is a <em>receipt.</em>
+        </h1>
+        <p class="lede reveal in" data-d="3">
+          We re-crawl every monitored policy on a rolling cadence. Boilerplate edits get suppressed; weakened rights, expanded retention, and new third parties rise to the top.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SUMMARY -->
+  <section class="card reveal" style="padding:36px 48px">
+    <div class="summary-grid">
+      <div class="summary"><div class="lbl">Domains watched</div><div class="big">12</div><div class="delta dn">All up to date</div></div>
+      <div class="summary"><div class="lbl">Material changes</div><div class="big">7</div><div class="delta">last 30 days</div></div>
+      <div class="summary"><div class="lbl">Score deltas</div><div class="big">&minus;<em>14</em></div><div class="delta up">avg drop this month</div></div>
+      <div class="summary"><div class="lbl">Alerts sent</div><div class="big">23</div><div class="delta">to your team</div></div>
+    </div>
+  </section>
+
+  <!-- TIMELINE -->
+  <section class="card reveal">
+    <div class="section">
+      <div class="section-head">
+        <div>
+          <div class="kicker">Timeline</div>
+          <h2 class="display">Every change, <em>annotated.</em></h2>
+        </div>
+        <div class="actions">
+          <button class="pill pill-ghost">Filter</button>
+          <button class="pill pill-ink">Export &rarr;</button>
+        </div>
+      </div>
+
+      <div class="timeline-list">
+        <div class="tl-evt">
+          <div class="when"><b>4 days ago</b>Mar 04 · 14:22</div>
+          <div class="what">
+            <h4>retailer.com &middot; v17 &rarr; <em>v18</em></h4>
+            <p>Retention extended from <b>"a reasonable period"</b> to <b>"up to seven (7) years"</b>. Three new third parties added without notice.</p>
+          </div>
+          <div class="change up">&minus;9<small>pts</small></div>
+        </div>
+        <div class="tl-evt">
+          <div class="when"><b>1 wk ago</b>Feb 26 · 09:11</div>
+          <div class="what">
+            <h4>publisher.io &middot; v22 &rarr; <em>v23</em></h4>
+            <p>Right-to-object language reinstated under <b>GDPR Art. 21</b> after Q1 audit. Two analytics partners removed from the disclosure list.</p>
+          </div>
+          <div class="change dn">+5<small>pts</small></div>
+        </div>
+        <div class="tl-evt">
+          <div class="when"><b>2 wk ago</b>Feb 19 · 18:44</div>
+          <div class="what">
+            <h4>marketplace.com &middot; v9 &rarr; <em>v10</em></h4>
+            <p>New section on AI training added &mdash; <b>opt-out</b> required. Three retention periods now specified to the day; previously vague.</p>
+          </div>
+          <div class="change dn">+3<small>pts</small></div>
+        </div>
+        <div class="tl-evt">
+          <div class="when"><b>3 wk ago</b>Feb 12 · 11:03</div>
+          <div class="what">
+            <h4>nytimes.com &middot; v34 &rarr; <em>v35</em></h4>
+            <p>Cookie banner adjusted &mdash; <b>"Reject all"</b> now equally weighted with "Accept". EDPB 3.5 finding cleared.</p>
+          </div>
+          <div class="change dn">+2<small>pts</small></div>
+        </div>
+        <div class="tl-evt">
+          <div class="when"><b>4 wk ago</b>Feb 05 · 22:18</div>
+          <div class="what">
+            <h4>booking.com &middot; v41 &rarr; <em>v42</em></h4>
+            <p>Cross-border transfer addendum updated; SCCs replaced with new EU&minus;US Data Privacy Framework reference.</p>
+          </div>
+          <div class="change">no &Delta;<small>pts</small></div>
+        </div>
+        <div class="tl-evt">
+          <div class="when"><b>5 wk ago</b>Jan 29 · 06:50</div>
+          <div class="what">
+            <h4>airline.com &middot; v15 &rarr; <em>v16</em></h4>
+            <p>Loyalty programme data sharing expanded to <b>14 partners</b> &mdash; up from 6. Material change without notice; alert sent.</p>
+          </div>
+          <div class="change up">&minus;6<small>pts</small></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DIFF DETAIL CARD -->
+  <section class="card reveal timeline-card" style="margin-top:14px">
+    <div class="tl-left">
+      <div class="kicker">Latest diff</div>
+      <h3 class="display">retailer.com<br/><em>v17 &rarr; v18</em></h3>
+      <p style="color:var(--ink-2);max-width:42ch;font-size:14.5px;line-height:1.6">The most consequential change this week. Three of nine GDPR rights were softened. We've inlined the diff and pinned the offending paragraphs.</p>
+      <div class="tl-list">
+        <div class="tl-item"><div class="num">i</div><div><h4>Retention extended</h4><p>From "a reasonable period of time" to "up to seven (7) years."</p></div></div>
+        <div class="tl-item"><div class="num">ii</div><div><h4>Third parties expanded</h4><p>+3 partners (FullStory, Klaviyo, Segment) &mdash; observed live, undisclosed in v17.</p></div></div>
+        <div class="tl-item"><div class="num">iii</div><div><h4>Right of erasure weakened</h4><p>"At any time" &rarr; "subject to applicable record-keeping obligations."</p></div></div>
+      </div>
+    </div>
+    <div class="tl-right">
+      <div class="diff-card">
+        <div class="diff-h">
+          <span><b>retailer.com</b> &middot; v17 &rarr; v18</span>
+          <div class="diff-toggle"><button class="on">Diff</button><button>Before</button><button>After</button></div>
+        </div>
+        <div class="diff-body">
+          We retain personal data for
+          <span class="diff-rem">a reasonable period of time</span>
+          <span class="diff-add">up to seven (7) years</span>.
+          We may share data with our service providers, advertising partners
+          <span class="diff-add">, and any third party with whom we partner to deliver products and services to you</span>.
+          <span class="diff-rem">You may request deletion at any time.</span>
+          <span class="diff-add">You may request deletion, subject to applicable record-keeping obligations.</span>
+        </div>
+        <div class="diff-meta">
+          <span><b>Score</b> &middot; <span class="down">&minus;9 pts</span></span>
+          <span><b>New trackers</b> &middot; +3</span>
+          <span><b>Rights weakened</b> &middot; Art. 17</span>
+          <span><b>Detected</b> &middot; 4d ago</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="card reveal" id="cta">
+    <div class="final-card">
+      <div class="kicker">Watch a domain</div>
+      <h2 class="display">Get an alert<br/>the <em>moment it changes.</em></h2>
+      <form class="final-form" onsubmit="return analyze(event)">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h.5a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-5A1.5 1.5 0 0 1 3.5 7H4zm1.5 0h5V5a2.5 2.5 0 0 0-5 0v2z"/></svg>
+        <input type="text" name="url" placeholder="https://domain-to-watch.com" />
+        <button type="submit" class="pill pill-ink">Watch <span class="pill-arrow">&rarr;</span></button>
+      </form>
+      <div class="note">Daily re-crawl &middot; email + Slack alerts on material change.</div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a href="index.html" class="brand">
+          <span class="brand-mark"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h6v6H2zM10 2h4v4h-4zM10 8h4v6h-4zM2 10h6v4H2z"/></svg></span>
+          <span>Privacy Label</span>
+        </a>
+        <p>An FDA-style nutrition label for the way websites handle your data.</p>
+      </div>
+      <div class="foot-col"><h5>Product</h5><ul><li><a href="index.html">Overview</a></li><li><a href="trackers.html">Trackers</a></li><li><a href="cookies.html">Cookies</a></li><li><a href="history.html">History</a></li></ul></div>
+      <div class="foot-col"><h5>Coverage</h5><ul><li><a href="index.html#compliance">GDPR</a></li><li><a href="index.html#compliance">CCPA / CPRA</a></li><li><a href="index.html#compliance">EDPB 03/2022</a></li></ul></div>
+      <div class="foot-col"><h5>Company</h5><ul><li><a href="account.html">Account</a></li><li><a href="#">Manifesto</a></li><li><a href="#">Contact</a></li></ul></div>
+    </div>
+    <div class="foot-bottom">
+      <span>&copy; 2026 Privacy Label &middot; <em>set in Cormorant Garamond &amp; Inter</em></span>
+      <span>v1.2.4</span>
+    </div>
+  </footer>
+
+</div>
+<script>
+  const io = new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:0.08, rootMargin:'0px 0px -40px 0px'});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+  document.querySelectorAll('.diff-toggle button').forEach(b=>{b.addEventListener('click',()=>{b.parentElement.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on')})});
+  function analyze(ev){ev.preventDefault();const f=ev.target,btn=f.querySelector('button'),o=btn.innerHTML;if(!f.querySelector('input').value){f.querySelector('input').focus();return false}btn.disabled=true;btn.innerHTML='Setting up watch…';setTimeout(()=>{btn.innerHTML='Watching ✓';btn.disabled=false;setTimeout(()=>btn.innerHTML=o,2200)},1800);return false;}
+</script>
+</body>
+</html>

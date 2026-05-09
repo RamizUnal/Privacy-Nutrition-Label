@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Privacy Label — Read every word, so you don't have to.</title>
+<meta name="description" content="A privacy nutrition label for any website. We crawl the policy, count the trackers, score the rights, and hand you a verdict." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Inter:wght@300;400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ====================== TOP STRIP =========================== -->
+  <header class="topbar">
+    <div class="l">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h10v13l-5-3-5 3V2z"/></svg>
+      <span>Case &mdash; Privacy Engineering</span>
+    </div>
+    <div class="r">
+      <span>v1.2 &middot; 2026</span>
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 14s-6-3.7-6-8a3.5 3.5 0 0 1 6-2.5A3.5 3.5 0 0 1 14 6c0 4.3-6 8-6 8z"/></svg>
+    </div>
+  </header>
+
+  <!-- ====================== HERO CARD =========================== -->
+  <section class="hero-card reveal in">
+    <div class="hero-bg" aria-hidden="true"></div>
+
+    <div class="hero-inner">
+      <!-- top row: brand · seg-nav · cta -->
+      <div class="hero-top">
+        <a href="#" class="brand">
+          <span class="brand-mark">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h6v6H2zM10 2h4v4h-4zM10 8h4v6h-4zM2 10h6v4H2z"/></svg>
+          </span>
+          <span>Privacy Label</span>
+        </a>
+
+        <nav class="seg" role="tablist">
+          <a href="index.html" class="on" data-tip="Overview" aria-label="Overview">
+            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>
+          </a>
+          <a href="trackers.html" data-tip="Trackers" aria-label="Trackers">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/></svg>
+          </a>
+          <a href="cookies.html" data-tip="Cookies" aria-label="Cookies">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 9 9c-3 0-5-2-5-4 0-3-2-5-4-5z"/><circle cx="9" cy="10" r=".9" fill="currentColor"/><circle cx="14" cy="14" r=".9" fill="currentColor"/><circle cx="10" cy="16" r=".9" fill="currentColor"/></svg>
+          </a>
+          <a href="history.html" data-tip="History" aria-label="History">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2.5"/></svg>
+          </a>
+          <a href="account.html" data-tip="Account" aria-label="Account">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="9" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+          </a>
+        </nav>
+
+        <a href="#cta" class="pill pill-white">Try free</a>
+      </div>
+
+      <!-- center copy -->
+      <div class="hero-copy">
+        <div class="badge reveal in" data-d="1">
+          Read with
+          <span class="chip">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l2 5 5 .5-3.5 3.5L13 15l-5-3-5 3 1.5-5L1 6.5 6 6z"/></svg>
+            GDPR &middot; CCPA
+          </span>
+        </div>
+
+        <h1 class="reveal in" data-d="2">
+          Read every word,<br />
+          so <em>you don't</em><br />
+          have to.
+        </h1>
+
+        <div class="hero-cta reveal in" data-d="3">
+          <a href="#cta" class="pill pill-ink">Generate a free report</a>
+          <a href="#sample" class="pill pill-ghost" onclick="loadSample(event)">See a sample &rarr;</a>
+        </div>
+      </div>
+
+      <!-- floating dashboard -->
+      <div class="hero-stage">
+        <div class="floating-dash reveal in" data-d="4">
+          <div class="fd-bar">
+            <div class="tl"><span></span><span></span><span></span></div>
+            <div class="url">
+              <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h.5a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-5A1.5 1.5 0 0 1 3.5 7H4zm1.5 0h5V5a2.5 2.5 0 0 0-5 0v2z"/></svg>
+              label.privacy / <b>nytimes.com</b>
+            </div>
+            <div class="meta">REPORT &middot; 0421</div>
+          </div>
+
+          <div class="fd-grid">
+            <aside class="fd-side">
+              <div class="domain">target / <b>nytimes.com</b></div>
+              <div class="grade-card">
+                <div class="letter">C</div>
+                <div class="meta">Score &middot; <b>62</b>/100</div>
+              </div>
+              <div class="bd">
+                <div class="bd-row"><span class="lbl">Data collection</span><span class="val">14/20</span><span class="bar"><i style="width:70%"></i></span></div>
+                <div class="bd-row warn"><span class="lbl">Third-party sharing</span><span class="val">10/20</span><span class="bar"><i style="width:50%"></i></span></div>
+                <div class="bd-row"><span class="lbl">Transparency</span><span class="val">11/15</span><span class="bar"><i style="width:73%"></i></span></div>
+                <div class="bd-row"><span class="lbl">Rights coverage</span><span class="val">13/15</span><span class="bar"><i style="width:87%"></i></span></div>
+                <div class="bd-row warn"><span class="lbl">Retention</span><span class="val">7/12</span><span class="bar"><i style="width:58%"></i></span></div>
+                <div class="bd-row bad"><span class="lbl">Dark patterns</span><span class="val">3/10</span><span class="bar"><i style="width:30%"></i></span></div>
+                <div class="bd-row"><span class="lbl">Technical hygiene</span><span class="val">4/8</span><span class="bar"><i style="width:50%"></i></span></div>
+              </div>
+            </aside>
+
+            <main class="fd-main">
+              <div class="fd-tabs">
+                <span class="fd-tab on">OVERVIEW</span>
+                <span class="fd-tab">TRACKERS &middot; 47</span>
+                <span class="fd-tab">COOKIES &middot; 88</span>
+                <span class="fd-tab">DARK PATTERNS &middot; 4</span>
+                <span class="fd-tab">RIGHTS &middot; 7/9</span>
+              </div>
+              <div class="fd-panel-grid">
+                <div class="fd-panel">
+                  <div class="h"><h4>Data collected</h4><span class="count">14 categories</span></div>
+                  <div class="fd-row"><span class="name"><b>Precise location</b> &middot; IP-resolved</span><span class="fd-tag high">SENSITIVE</span></div>
+                  <div class="fd-row"><span class="name"><b>Browsing history</b> &middot; cross-site</span><span class="fd-tag med">MEDIUM</span></div>
+                  <div class="fd-row"><span class="name"><b>Device fingerprint</b> &middot; canvas</span><span class="fd-tag high">SENSITIVE</span></div>
+                  <div class="fd-row"><span class="name"><b>Email + payment</b> &middot; subscribers</span><span class="fd-tag med">PII</span></div>
+                </div>
+                <div class="fd-panel">
+                  <div class="h"><h4>Third parties</h4><span class="count">31 partners</span></div>
+                  <div class="fd-row"><span class="name"><b>Google Ads</b> &middot; advertising</span><span class="fd-tag low">DISCLOSED</span></div>
+                  <div class="fd-row"><span class="name"><b>Meta Pixel</b> &middot; conversion</span><span class="fd-tag low">DISCLOSED</span></div>
+                  <div class="fd-row"><span class="name"><b>Chartbeat</b> &middot; analytics</span><span class="fd-tag low">DISCLOSED</span></div>
+                  <div class="fd-row"><span class="name"><b>FullStory</b> &middot; replay</span><span class="fd-tag high">UNDISCLOSED</span></div>
+                </div>
+                <div class="fd-panel">
+                  <div class="h"><h4>Dark patterns</h4><span class="count">4 of 9</span></div>
+                  <div class="fd-row"><span class="name"><b>Pre-ticked consent</b></span><span class="fd-tag high">EDPB&nbsp;3.4</span></div>
+                  <div class="fd-row"><span class="name"><b>"Reject all" buried</b></span><span class="fd-tag high">EDPB&nbsp;3.5</span></div>
+                  <div class="fd-row"><span class="name"><b>Confirmshaming copy</b></span><span class="fd-tag med">EDPB&nbsp;3.6</span></div>
+                  <div class="fd-row"><span class="name"><b>Visual asymmetry</b></span><span class="fd-tag med">EDPB&nbsp;3.3</span></div>
+                </div>
+                <div class="fd-panel">
+                  <div class="h"><h4>GDPR rights</h4><span class="count">7 / 9</span></div>
+                  <div class="fd-row"><span class="name"><b>Art. 15</b> &middot; access</span><span class="fd-tag low">CITED</span></div>
+                  <div class="fd-row"><span class="name"><b>Art. 17</b> &middot; erasure</span><span class="fd-tag low">CITED</span></div>
+                  <div class="fd-row"><span class="name"><b>Art. 20</b> &middot; portability</span><span class="fd-tag med">VAGUE</span></div>
+                  <div class="fd-row"><span class="name"><b>Art. 21</b> &middot; objection</span><span class="fd-tag high">MISSING</span></div>
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ====================== SPLIT TABS / GRASS CARD ============== -->
+  <section class="card split-card reveal">
+    <div class="split-banner">
+      <div class="kicker">Chapter one &middot; what we read</div>
+      <h2 class="display">Decode the policy. <em>Audit the page.</em><br/>Hand back a verdict.</h2>
+    </div>
+
+    <div class="tabs-row" id="featTabs">
+      <div class="tab on" data-feat="trackers"><div class="lbl">Trackers</div><div class="sub">80+ DETECTORS</div></div>
+      <div class="tab" data-feat="cookies"><div class="lbl">Cookies</div><div class="sub">FLAGS &middot; CATEGORY</div></div>
+      <div class="tab" data-feat="darkp"><div class="lbl">Dark Patterns</div><div class="sub">EDPB 03/2022</div></div>
+      <div class="tab" data-feat="rights"><div class="lbl">Rights</div><div class="sub">GDPR + CCPA</div></div>
+    </div>
+
+    <div class="split-body">
+      <div class="split-left" id="featCopy">
+        <div>
+          <div class="kicker">Tracker detection</div>
+          <h3 class="display"><em>Trackers</em> that hide.</h3>
+          <p>We render the live page in a headless browser, capture every script, beacon, and websocket — and reconcile what's running with what's disclosed in the policy.</p>
+          <p>Eighty-plus detectors for ad pixels, session replays, fingerprinters, and tag managers. Forty-plus partners come pre-rated for jurisdiction and breach history.</p>
+        </div>
+        <a href="#cta" class="pill pill-ink" style="align-self:flex-start">Run a tracker scan <span class="pill-arrow">&rarr;</span></a>
+      </div>
+
+      <div class="split-right">
+        <div class="glass" id="featGlass">
+          <div class="glass-h">
+            <div class="ico">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.5"/></svg>
+            </div>
+            <div class="who">
+              <b>retailer.com</b>
+              <span>LIVE SCAN &middot; 47 RUNNING</span>
+            </div>
+            <div class="num"><em>47</em></div>
+          </div>
+          <div class="glass-row"><span class="name"><b>Google Ads</b> &middot; doubleclick.net</span><span class="fd-tag high">AD</span></div>
+          <div class="glass-row"><span class="name"><b>Meta Pixel</b> &middot; connect.facebook.net</span><span class="fd-tag high">AD</span></div>
+          <div class="glass-row"><span class="name"><b>TikTok Pixel</b> &middot; analytics.tiktok</span><span class="fd-tag high">AD</span></div>
+          <div class="glass-row"><span class="name"><b>FullStory</b> &middot; edge.fullstory</span><span class="fd-tag high">REPLAY</span></div>
+          <div class="glass-row"><span class="name"><b>Hotjar</b> &middot; script.hotjar</span><span class="fd-tag med">ANALYTICS</span></div>
+          <div class="glass-row"><span class="name"><b>FingerprintJS</b> &middot; api.fpjs.io</span><span class="fd-tag high">FINGERPRINT</span></div>
+          <div class="glass-foot">
+            <span class="pill pill-ghost" style="background:rgba(255,255,255,0.6);border-color:rgba(14,14,13,0.08)">Reconcile vs policy</span>
+            <span class="pill pill-ink">Block all</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ====================== STATS STRIP ========================= -->
+  <section class="card strip-card reveal">
+    <div class="strip">
+      <div class="stat"><div class="big">80<em>+</em></div><div class="lbl">trackers detected</div></div>
+      <div class="stat"><div class="big">20<em>+</em></div><div class="lbl">data categories</div></div>
+      <div class="stat"><div class="big">9</div><div class="lbl">dark patterns &middot; EDPB</div></div>
+      <div class="stat"><div class="big">15</div><div class="lbl">GDPR + CCPA rights</div></div>
+    </div>
+  </section>
+
+
+  <!-- ====================== SCORING CARD ======================== -->
+  <section class="card scoring-card reveal" id="scoring">
+    <div class="scoring-head">
+      <div class="kicker">Chapter two &middot; the verdict</div>
+      <h2 class="display">One number, weighted across<br/><em>seven dimensions.</em></h2>
+    </div>
+    <div class="scoring-grid">
+      <div class="pie-wrap">
+        <svg class="pie-svg" id="pieSvg" viewBox="0 0 200 200">
+          <circle cx="100" cy="100" r="78" fill="none" stroke="rgba(14,14,13,0.06)" stroke-width="0.5"/>
+          <circle class="seg" data-key="0" cx="100" cy="100" r="78" fill="none" stroke="#0E0E0D" stroke-width="40" stroke-dasharray="97.99 489.97" stroke-dashoffset="0"/>
+          <circle class="seg" data-key="1" cx="100" cy="100" r="78" fill="none" stroke="#3A3A36" stroke-width="40" stroke-dasharray="97.99 489.97" stroke-dashoffset="-97.99"/>
+          <circle class="seg" data-key="2" cx="100" cy="100" r="78" fill="none" stroke="#6B6A66" stroke-width="40" stroke-dasharray="73.50 489.97" stroke-dashoffset="-195.99"/>
+          <circle class="seg" data-key="3" cx="100" cy="100" r="78" fill="none" stroke="#8E8C87" stroke-width="40" stroke-dasharray="73.50 489.97" stroke-dashoffset="-269.49"/>
+          <circle class="seg" data-key="4" cx="100" cy="100" r="78" fill="none" stroke="#6B8453" stroke-width="40" stroke-dasharray="58.80 489.97" stroke-dashoffset="-342.99"/>
+          <circle class="seg" data-key="5" cx="100" cy="100" r="78" fill="none" stroke="#A04535" stroke-width="40" stroke-dasharray="49.00 489.97" stroke-dashoffset="-401.79"/>
+          <circle class="seg" data-key="6" cx="100" cy="100" r="78" fill="none" stroke="#B98F2A" stroke-width="40" stroke-dasharray="39.20 489.97" stroke-dashoffset="-450.79"/>
+        </svg>
+        <div class="pie-center">
+          <div class="pie-num" id="pieNum">62</div>
+          <div class="pie-lbl" id="pieLbl">composite score</div>
+        </div>
+      </div>
+
+      <div class="legend" id="legend">
+        <div class="leg" data-key="0"><span class="swatch" style="background:#0E0E0D"></span><span class="name">Data Collection</span><span class="pct">20%</span><span class="arr">&rarr;</span></div>
+        <div class="leg" data-key="1"><span class="swatch" style="background:#3A3A36"></span><span class="name">Third-Party Sharing</span><span class="pct">20%</span><span class="arr">&rarr;</span></div>
+        <div class="leg" data-key="2"><span class="swatch" style="background:#6B6A66"></span><span class="name">Transparency</span><span class="pct">15%</span><span class="arr">&rarr;</span></div>
+        <div class="leg" data-key="3"><span class="swatch" style="background:#8E8C87"></span><span class="name">Rights Coverage</span><span class="pct">15%</span><span class="arr">&rarr;</span></div>
+        <div class="leg" data-key="4"><span class="swatch" style="background:#6B8453"></span><span class="name">Retention</span><span class="pct">12%</span><span class="arr">&rarr;</span></div>
+        <div class="leg" data-key="5"><span class="swatch" style="background:#A04535"></span><span class="name">Dark Patterns</span><span class="pct">10%</span><span class="arr">&rarr;</span></div>
+        <div class="leg" data-key="6"><span class="swatch" style="background:#B98F2A"></span><span class="name">Technical Hygiene</span><span class="pct">8%</span><span class="arr">&rarr;</span></div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ====================== TIMELINE / DIFF ===================== -->
+  <section class="card timeline-card reveal">
+    <div class="tl-left">
+      <div class="kicker">Chapter three &middot; versioning</div>
+      <h3 class="display">Every clause<br/>is a <em>receipt.</em></h3>
+      <p style="color:var(--ink-2);max-width:42ch;font-size:14.5px;line-height:1.6">We re-crawl every monitored policy on a rolling cadence. Boilerplate edits are suppressed; weakened rights, expanded retention, and new third parties rise to the top.</p>
+      <div class="tl-list">
+        <div class="tl-item">
+          <div class="num">i</div>
+          <div>
+            <h4>Versioned, automatically</h4>
+            <p>Each policy hashed, dated, and pinned to the URL it came from.</p>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="num">ii</div>
+          <div>
+            <h4>Diffs that matter</h4>
+            <p>New trackers, expanded retention, weakened rights — surfaced with score deltas.</p>
+          </div>
+        </div>
+        <div class="tl-item">
+          <div class="num">iii</div>
+          <div>
+            <h4>Alerts on material change</h4>
+            <p>Email the moment a watched domain's grade drops or new sensitive data appears.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="tl-right">
+      <div class="diff-card">
+        <div class="diff-h">
+          <span><b>retailer.com</b> &middot; v17 &rarr; v18</span>
+          <div class="diff-toggle">
+            <button class="on">Diff</button>
+            <button>Before</button>
+            <button>After</button>
+          </div>
+        </div>
+        <div class="diff-body">
+          We retain personal data for
+          <span class="diff-rem">a reasonable period of time</span>
+          <span class="diff-add">up to seven (7) years</span>.
+          We may share data with our service providers, advertising partners
+          <span class="diff-add">, and any third party with whom we partner to deliver products and services to you</span>.
+          <span class="diff-rem">You may request deletion at any time.</span>
+          <span class="diff-add">You may request deletion, subject to applicable record-keeping obligations.</span>
+        </div>
+        <div class="diff-meta">
+          <span><b>Score</b> &middot; <span class="down">&minus;9 pts</span></span>
+          <span><b>New trackers</b> &middot; +3</span>
+          <span><b>Rights weakened</b> &middot; Art. 17</span>
+          <span><b>Detected</b> &middot; 4d ago</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ====================== COMPLIANCE GRID ===================== -->
+  <section class="card comp-card reveal" id="compliance">
+    <div class="head">
+      <div class="kicker">Chapter four &middot; coverage</div>
+      <h2 class="display">Every framework you have<br/><em>to answer to.</em></h2>
+    </div>
+    <div class="comp-grid">
+      <div class="comp">
+        <div class="law">GDPR</div>
+        <div class="reg">EU 2016/679</div>
+        <ul>
+          <li>Art. 15 — access</li>
+          <li>Art. 16 — rectification</li>
+          <li>Art. 17 — erasure</li>
+          <li>Art. 18 — restriction</li>
+          <li>Art. 20 — portability</li>
+          <li>Art. 21 — objection</li>
+          <li>Art. 22 — automated decisions</li>
+        </ul>
+      </div>
+      <div class="comp">
+        <div class="law">CCPA</div>
+        <div class="reg">Cal. Civ. §§ 1798</div>
+        <ul>
+          <li>§ 1798.100 — right to know</li>
+          <li>§ 1798.105 — right to delete</li>
+          <li>§ 1798.106 — correction</li>
+          <li>§ 1798.120 — opt-out of sale</li>
+          <li>§ 1798.121 — limit sensitive use</li>
+          <li>§ 1798.125 — non-discrimination</li>
+        </ul>
+      </div>
+      <div class="comp">
+        <div class="law">EDPB</div>
+        <div class="reg">03/2022 &middot; dark patterns</div>
+        <ul>
+          <li>3.1 — overloading</li>
+          <li>3.2 — skipping</li>
+          <li>3.3 — stirring</li>
+          <li>3.4 — hindering</li>
+          <li>3.5 — fickle</li>
+          <li>3.6 — left in dark</li>
+          <li>3.7 — confirmshaming</li>
+        </ul>
+      </div>
+      <div class="comp">
+        <div class="law">Cross-jurisdiction</div>
+        <div class="reg">global coverage</div>
+        <ul>
+          <li>LGPD (Brazil) — 13.709/18</li>
+          <li>PECR (UK) &middot; cookies</li>
+          <li>ePrivacy 2002/58/EC</li>
+          <li>COPPA — 15 USC §6501</li>
+          <li>PIPEDA (Canada)</li>
+          <li>POPIA (South Africa)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ====================== EXTENSION (DARK) ==================== -->
+  <section class="card reveal" id="extension">
+    <div class="ext-card">
+      <div>
+        <div class="kicker">Browser extension</div>
+        <h2 class="display">The tracker count,<br/><em>on every tab.</em></h2>
+        <p>Install the Chrome extension and the live count appears on the toolbar badge. One click for the full report — score, cookies, dark patterns, and right-to-opt-out, without ever leaving the page.</p>
+        <div class="ext-actions">
+          <a href="#" class="pill pill-cream">Add to Chrome <span class="pill-arrow">&rarr;</span></a>
+          <a href="#" class="pill pill-glass">Firefox</a>
+          <a href="#" class="pill pill-glass">Safari</a>
+        </div>
+      </div>
+      <div class="ext-pop">
+        <div class="top">
+          <div class="domain">retailer.com</div>
+          <div class="badge-mini">47</div>
+        </div>
+        <div class="ep-row"><b>Privacy grade</b><span class="bad">D &middot; 41/100</span></div>
+        <div class="ep-row"><b>Trackers active</b><span class="bad">47</span></div>
+        <div class="ep-row"><b>Cookies set</b><span>88 &middot; 62 third-party</span></div>
+        <div class="ep-row"><b>Dark patterns</b><span class="bad">5 of 9</span></div>
+        <div class="ep-row"><b>Right to opt-out</b><span>missing</span></div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="pill pill-ink" style="flex:1;padding:10px 12px;font-size:12px">Open report &rarr;</button>
+          <button class="pill pill-ghost" style="padding:10px 12px;font-size:12px">Watch</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ====================== FINAL CTA =========================== -->
+  <section class="card reveal" id="cta">
+    <div class="final-card">
+      <div class="kicker">Generate your label</div>
+      <h2 class="display">Stop reading legalese.<br/><em>Start signing off</em><br/>on it.</h2>
+      <form class="final-form" onsubmit="return analyze(event)" id="ctaForm">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h.5a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.5v-5A1.5 1.5 0 0 1 3.5 7H4zm1.5 0h5V5a2.5 2.5 0 0 0-5 0v2z"/></svg>
+        <input type="text" name="url" placeholder="https://nytimes.com" autocomplete="off" spellcheck="false" />
+        <button type="submit" class="pill pill-ink">Generate label <span class="pill-arrow">&rarr;</span></button>
+      </form>
+      <div class="note">Free for the first 50 reports / month. <a href="#">No card. See what's in a label &rarr;</a></div>
+    </div>
+  </section>
+
+  <!-- ====================== FOOTER ============================== -->
+  <footer>
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a href="#" class="brand">
+          <span class="brand-mark">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h6v6H2zM10 2h4v4h-4zM10 8h4v6h-4zM2 10h6v4H2z"/></svg>
+          </span>
+          <span>Privacy Label</span>
+        </a>
+        <p>An FDA-style nutrition label for the way websites handle your data. Privacy made legible, citable, comparable.</p>
+      </div>
+      <div class="foot-col">
+        <h5>Product</h5>
+        <ul>
+          <li><a href="#scoring">Scoring</a></li>
+          <li><a href="#extension">Extension</a></li>
+          <li><a href="#">API</a></li>
+          <li><a href="#">Changelog</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h5>Coverage</h5>
+        <ul>
+          <li><a href="#compliance">GDPR</a></li>
+          <li><a href="#compliance">CCPA / CPRA</a></li>
+          <li><a href="#compliance">LGPD</a></li>
+          <li><a href="#compliance">EDPB 03/2022</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h5>Company</h5>
+        <ul>
+          <li><a href="#">Manifesto</a></li>
+          <li><a href="#">Privacy policy <em style="font-family:'Cormorant Garamond',serif;font-style:italic">(of course)</em></a></li>
+          <li><a href="#">Terms</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>&copy; 2026 Privacy Label &middot; <em>set in Cormorant Garamond &amp; Inter</em></span>
+      <span>v1.2.4</span>
+    </div>
+  </footer>
+
+</div>
+
+
+<script>
+  // ---------- reveal observer ----------
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  },{threshold:0.08, rootMargin:'0px 0px -40px 0px'});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+  // ---------- pie animation ----------
+  const pieSvg = document.getElementById('pieSvg');
+  const pieIO = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ pieSvg.classList.add('in'); pieIO.unobserve(pieSvg); }});
+  },{threshold:0.3});
+  document.querySelectorAll('.pie-svg .seg').forEach((c,i)=>{
+    const dash = c.getAttribute('stroke-dasharray').split(' ');
+    const len = parseFloat(dash[0]);
+    const off = parseFloat(c.getAttribute('stroke-dashoffset'));
+    c.style.setProperty('--len', (len*1.0)+'px');
+    c.style.setProperty('--off', off+'px');
+    c.style.strokeDashoffset = (len + Math.abs(off)) + 'px';
+    c.style.animationDelay = (0.06*i)+'s';
+  });
+  pieIO.observe(pieSvg);
+
+  // ---------- pie legend interactivity ----------
+  const legend = document.getElementById('legend');
+  const segs = document.querySelectorAll('.pie-svg .seg');
+  const data = [
+    {v:'14/20', l:'data collection'},
+    {v:'10/20', l:'third-party sharing'},
+    {v:'11/15', l:'transparency'},
+    {v:'13/15', l:'rights coverage'},
+    {v:'7/12',  l:'retention'},
+    {v:'3/10',  l:'dark patterns'},
+    {v:'4/8',   l:'technical hygiene'},
+  ];
+  const pieNum = document.getElementById('pieNum');
+  const pieLbl = document.getElementById('pieLbl');
+  legend.querySelectorAll('.leg').forEach(leg=>{
+    leg.addEventListener('mouseenter', ()=>{
+      const k = +leg.dataset.key;
+      legend.classList.add('dim');
+      legend.querySelectorAll('.leg').forEach(x=>x.classList.toggle('active', +x.dataset.key===k));
+      segs.forEach(s=>s.style.opacity = (+s.dataset.key===k)?1:0.16);
+      pieNum.textContent = data[k].v.split('/')[0];
+      pieLbl.textContent = data[k].l;
+    });
+    leg.addEventListener('mouseleave', ()=>{
+      legend.classList.remove('dim');
+      legend.querySelectorAll('.leg').forEach(x=>x.classList.remove('active'));
+      segs.forEach(s=>s.style.opacity = 1);
+      pieNum.textContent = '62';
+      pieLbl.textContent = 'composite score';
+    });
+  });
+
+  // ---------- feature tabs (split card) ----------
+  const featCopy = document.getElementById('featCopy');
+  const featGlass = document.getElementById('featGlass');
+  const featData = {
+    trackers: {
+      kicker:'Tracker detection', em:'Trackers', tail:'that hide.',
+      p1:"We render the live page in a headless browser, capture every script, beacon, and websocket — and reconcile what's running with what's disclosed.",
+      p2:"Eighty-plus detectors for ad pixels, session replays, fingerprinters, and tag managers. Forty-plus partners pre-rated for jurisdiction and breach history.",
+      cta:'Run a tracker scan',
+      glass:{
+        ico:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.5"/></svg>',
+        title:'retailer.com', sub:'LIVE SCAN · 47 RUNNING', num:'47',
+        rows:[
+          ['<b>Google Ads</b> · doubleclick.net','high','AD'],
+          ['<b>Meta Pixel</b> · connect.facebook.net','high','AD'],
+          ['<b>TikTok Pixel</b> · analytics.tiktok','high','AD'],
+          ['<b>FullStory</b> · edge.fullstory','high','REPLAY'],
+          ['<b>Hotjar</b> · script.hotjar','med','ANALYTICS'],
+          ['<b>FingerprintJS</b> · api.fpjs.io','high','FINGERPRINT'],
+        ],
+        feet:['Reconcile vs policy','Block all'],
+      }
+    },
+    cookies: {
+      kicker:'Cookie audit', em:'Cookies', tail:'with receipts.',
+      p1:"Every cookie inventoried with HttpOnly, Secure, SameSite flags, lifetime and category — first vs. third party, advertising vs. functional.",
+      p2:"We flag cookies that exceed your stated retention, lack a category, or fire before consent.",
+      cta:'Audit cookies',
+      glass:{
+        ico:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="6" cy="6" r=".7" fill="currentColor"/><circle cx="10" cy="9" r=".7" fill="currentColor"/></svg>',
+        title:'retailer.com', sub:'88 COOKIES · 62 THIRD-PARTY', num:'88',
+        rows:[
+          ['<b>_fbp</b> · facebook.com','high','AD · 90d'],
+          ['<b>_ga</b> · google.com','med','ANALYTICS · 2y'],
+          ['<b>session_id</b> · retailer.com','low','FUNCTIONAL · session'],
+          ['<b>cart</b> · retailer.com','low','FUNCTIONAL · 30d'],
+          ['<b>_klaviyo</b> · klaviyo.com','high','AD · 1y'],
+          ['<b>_hjid</b> · hotjar.com','med','ANALYTICS · 1y'],
+        ],
+        feet:['Export CSV','Force consent'],
+      }
+    },
+    darkp: {
+      kicker:'Dark patterns', em:'Patterns', tail:'pulled from EDPB 03/2022.',
+      p1:"Nine canonical patterns from EDPB Guidelines 03/2022 — overloading, skipping, stirring, hindering, fickle interfaces, left-in-the-dark, confirmshaming.",
+      p2:"Each detection is pinned to the offending screenshot, with a citation back to the regulatory source.",
+      cta:'See patterns flagged',
+      glass:{
+        ico:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8.5l3 3L14 4"/></svg>',
+        title:'retailer.com', sub:'4 OF 9 PATTERNS DETECTED', num:'4',
+        rows:[
+          ['<b>Pre-ticked consent boxes</b>','high','EDPB 3.4'],
+          ['<b>"Reject all" buried 2 clicks</b>','high','EDPB 3.5'],
+          ['<b>Confirmshaming copy</b>','med','EDPB 3.6'],
+          ['<b>Visual asymmetry on CTA</b>','med','EDPB 3.3'],
+          ['<b>Forced action on close</b>','low','EDPB 3.4'],
+          ['<b>Default sharing toggle</b>','high','EDPB 3.4'],
+        ],
+        feet:['View screenshots','Generate notice'],
+      }
+    },
+    rights: {
+      kicker:'Rights coverage', em:'Rights,', tail:'cited or missing.',
+      p1:"We score the policy against GDPR Articles 15–22 and CCPA §§ 1798.100–121 — and tell you which rights are explicitly named, which are vague, and which are absent.",
+      p2:"Each finding links back to the line of policy that produced it. No paraphrasing — just citations.",
+      cta:'Audit my rights',
+      glass:{
+        ico:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="1"/><path d="M5.5 6h5M5.5 8h5M5.5 10h3"/></svg>',
+        title:'retailer.com', sub:'GDPR · 7 of 9 cited', num:'7/9',
+        rows:[
+          ['<b>Art. 15</b> · access','low','CITED'],
+          ['<b>Art. 16</b> · rectification','low','CITED'],
+          ['<b>Art. 17</b> · erasure','low','CITED'],
+          ['<b>Art. 20</b> · portability','med','VAGUE'],
+          ['<b>Art. 21</b> · objection','high','MISSING'],
+          ['<b>Art. 22</b> · auto decisions','high','MISSING'],
+        ],
+        feet:['File request','Export evidence'],
+      }
+    },
+  };
+  document.querySelectorAll('#featTabs .tab').forEach(t=>{
+    t.addEventListener('click', ()=>{
+      const k = t.dataset.feat;
+      document.querySelectorAll('#featTabs .tab').forEach(x=>x.classList.toggle('on', x===t));
+      const d = featData[k];
+      featCopy.innerHTML = `
+        <div>
+          <div class="kicker">${d.kicker}</div>
+          <h3 class="display"><em>${d.em}</em> ${d.tail}</h3>
+          <p>${d.p1}</p>
+          <p>${d.p2}</p>
+        </div>
+        <a href="#cta" class="pill pill-ink" style="align-self:flex-start">${d.cta} <span class="pill-arrow">&rarr;</span></a>
+      `;
+      const g = d.glass;
+      featGlass.innerHTML = `
+        <div class="glass-h">
+          <div class="ico">${g.ico}</div>
+          <div class="who">
+            <b>${g.title}</b>
+            <span>${g.sub}</span>
+          </div>
+          <div class="num"><em>${g.num}</em></div>
+        </div>
+        ${g.rows.map(r=>`<div class="glass-row"><span class="name">${r[0]}</span><span class="fd-tag ${r[1]}">${r[2]}</span></div>`).join('')}
+        <div class="glass-foot">
+          <span class="pill pill-ghost" style="background:rgba(255,255,255,0.6);border-color:rgba(14,14,13,0.08)">${g.feet[0]}</span>
+          <span class="pill pill-ink">${g.feet[1]}</span>
+        </div>
+      `;
+    });
+  });
+
+  // ---------- diff toggle ----------
+  document.querySelectorAll('.diff-toggle button').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      b.parentElement.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+    });
+  });
+
+  // ---------- dashboard tabs (cosmetic) ----------
+  document.querySelectorAll('.fd-tab').forEach(t=>{
+    t.addEventListener('click', ()=>{
+      document.querySelectorAll('.fd-tab').forEach(x=>x.classList.remove('on'));
+      t.classList.add('on');
+    });
+  });
+
+  // ---------- form submit + sample ----------
+  function analyze(ev){
+    ev.preventDefault();
+    const form = ev.target;
+    const input = form.querySelector('input');
+    const btn = form.querySelector('button');
+    const original = btn.innerHTML;
+    if(!input.value){ input.focus(); input.placeholder='Try a real URL ↵'; return false; }
+    btn.disabled = true;
+    btn.innerHTML = 'Scanning…';
+    setTimeout(()=>{ btn.innerHTML='Reading policy…' },700);
+    setTimeout(()=>{ btn.innerHTML='Counting trackers…' },1500);
+    setTimeout(()=>{
+      btn.innerHTML = 'Done · view label →';
+      btn.disabled = false;
+      const stage = document.querySelector('.floating-dash');
+      if(stage){ stage.scrollIntoView({behavior:'smooth', block:'center'}); }
+      setTimeout(()=>{ btn.innerHTML = original; },2400);
+    },2300);
+    return false;
+  }
+  function loadSample(ev){
+    ev.preventDefault();
+    document.querySelector('.floating-dash').scrollIntoView({behavior:'smooth', block:'center'});
+  }
+</script>
+</body>
+</html>
