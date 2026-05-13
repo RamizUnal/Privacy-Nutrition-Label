@@ -36,9 +36,9 @@ const TABS = [
   { id: 'rights',        label: 'Rights',           group: 'core' },
   { id: 'transparency',  label: 'Transparency',     group: 'core' },
   { id: 'history',       label: 'Policy History',   group: 'core' },
-  { id: 'ai_insights',   label: '✦ AI Insights',    group: 'ai'   },
+  { id: 'ai_insights',   label: 'AI Insights',      group: 'ai'   },
   { id: 'ecosystem',     label: 'Ecosystem',        group: 'ai'   },
-  { id: 'assistant',     label: '💬 Assistant',     group: 'ai'   },
+  { id: 'assistant',     label: 'Assistant',        group: 'ai'   },
 ];
 
 export default function PrivacyLabel({ result, onReanalyze }: Props) {
@@ -47,13 +47,13 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
   const hasMismatches = (result.mismatch_analysis?.total_count ?? 0) > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Score header */}
       <ScoreHeader result={result} onReanalyze={onReanalyze} />
 
       {/* Tabs */}
-      <div className="border-b border-border sticky top-[57px] bg-bg/95 backdrop-blur-sm z-30">
-        <div className="flex overflow-x-auto gap-0 scrollbar-hide">
+      <div className="sticky top-3 z-30 rounded-full border border-white/80 bg-white/75 p-1 shadow-[var(--shadow-sm)] backdrop-blur-xl">
+        <div className="flex gap-1 overflow-x-auto scrollbar-hide">
           {TABS.map((tab, idx) => {
             const hasAlert = (
               (tab.id === 'dark_patterns' && result.dark_patterns?.count > 0) ||
@@ -70,23 +70,23 @@ export default function PrivacyLabel({ result, onReanalyze }: Props) {
                 )}
                 <button
                   onClick={() => setActiveTab(tab.id)}
-                  className={`relative px-4 py-3 text-xs font-mono font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
+                  className={`relative whitespace-nowrap rounded-full px-4 py-2.5 text-[11px] font-mono font-medium uppercase tracking-[0.08em] transition-all ${
                     activeTab === tab.id
                       ? isAI
-                        ? 'border-violet-400 text-violet-300'
+                        ? 'bg-[#0E0E0D] text-[#FBFAF7]'
                         : tab.id === 'mismatch'
-                          ? 'border-orange-400 text-orange-300'
-                          : 'border-accent-green text-accent-green'
+                          ? 'bg-[#0E0E0D] text-[#FBFAF7]'
+                          : 'bg-[#0E0E0D] text-[#FBFAF7]'
                       : isAI
-                        ? 'border-transparent text-violet-400/50 hover:text-violet-300/80'
+                        ? 'text-violet-400/70 hover:bg-black/5'
                         : tab.id === 'mismatch'
-                          ? 'border-transparent text-orange-400/50 hover:text-orange-300/80'
-                          : 'border-transparent text-white/40 hover:text-white/70'
+                          ? 'text-orange-400/70 hover:bg-black/5'
+                          : 'text-white/50 hover:bg-black/5 hover:text-white/80'
                   }`}
                 >
                   {tab.label}
                   {hasAlert && (
-                    <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-red-500" />
+                    <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-red-500" />
                   )}
                 </button>
               </React.Fragment>

@@ -27,16 +27,15 @@ export default function SearchBar({ onAnalyze, compact, initialUrl, onRefresh }:
     <div className={clsx('w-full', compact ? 'max-w-3xl' : 'max-w-2xl mx-auto')}>
       <form onSubmit={handleSubmit} className="relative">
         <div className={clsx(
-          'flex items-center gap-0 rounded-lg border transition-all duration-300 overflow-hidden',
+          'glass-panel flex items-center gap-0 overflow-hidden rounded-full transition-all duration-300',
           focused
-            ? 'border-accent-green/60 shadow-[0_0_0_1px_rgba(0,255,136,0.15)]'
-            : 'border-border hover:border-white/20',
-          'bg-panel',
+            ? 'border-accent-green/60 shadow-[0_1px_0_rgba(255,255,255,0.7)_inset,0_18px_44px_-24px_rgba(14,14,13,0.28)]'
+            : 'hover:border-white/90',
         )}>
           {/* Lock icon */}
           <div className="pl-4 pr-2 flex-shrink-0">
             <svg
-              className={clsx('w-4 h-4 transition-colors', focused ? 'text-accent-green' : 'text-white/30')}
+              className={clsx('w-4 h-4 transition-colors', focused ? 'text-accent-green' : 'text-white/35')}
               fill="none" stroke="currentColor" viewBox="0 0 24 24"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -51,7 +50,7 @@ export default function SearchBar({ onAnalyze, compact, initialUrl, onRefresh }:
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             placeholder="Enter website URL (e.g. facebook.com)"
-            className="flex-1 bg-transparent py-3.5 pr-2 text-sm font-mono text-white placeholder-white/25 outline-none"
+            className="flex-1 bg-transparent py-4 pr-2 text-sm font-mono text-white outline-none placeholder:text-[rgba(14,14,13,0.34)]"
             autoComplete="off"
             spellCheck={false}
           />
@@ -60,7 +59,7 @@ export default function SearchBar({ onAnalyze, compact, initialUrl, onRefresh }:
             <button
               type="button"
               onClick={onRefresh}
-              className="px-3 py-3.5 text-white/30 hover:text-white/60 transition-colors border-r border-border"
+              className="px-3 py-4 text-white/35 hover:text-white/70 transition-colors border-r border-border"
               title="Force re-analyze"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -73,10 +72,10 @@ export default function SearchBar({ onAnalyze, compact, initialUrl, onRefresh }:
           <button
             type="submit"
             className={clsx(
-              'px-5 py-3.5 font-mono text-sm font-semibold transition-all duration-200 flex-shrink-0',
+              'mr-1.5 rounded-full px-5 py-3 font-mono text-xs font-semibold uppercase tracking-[0.08em] transition-all duration-200 flex-shrink-0',
               url.trim()
-                ? 'bg-accent-green text-black hover:bg-accent-green/90'
-                : 'bg-white/5 text-white/30 cursor-not-allowed',
+                ? 'bg-[#0E0E0D] text-[#FBFAF7] hover:-translate-y-0.5'
+                : 'bg-white/60 text-white/40 cursor-not-allowed',
             )}
           >
             ANALYZE
@@ -85,13 +84,13 @@ export default function SearchBar({ onAnalyze, compact, initialUrl, onRefresh }:
       </form>
 
       {!compact && (
-        <div className="mt-3 flex items-center gap-2 flex-wrap">
-          <span className="text-white/25 text-xs font-mono">Try:</span>
+        <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
+          <span className="text-white/35 text-xs font-mono uppercase tracking-[0.12em]">Try</span>
           {EXAMPLE_SITES.map(site => (
             <button
               key={site}
               onClick={() => { setUrl(site); onAnalyze(site); }}
-              className="text-xs font-mono text-white/35 hover:text-accent-green/80 transition-colors underline underline-offset-2"
+              className="rounded-full border border-white/80 bg-white/50 px-3 py-1 text-xs font-mono text-white/55 transition-colors hover:border-accent-green/40 hover:text-accent-green"
             >
               {site}
             </button>

@@ -88,10 +88,10 @@ interface Props {
 }
 
 const GRADE_COLORS: Record<string, string> = {
-  A: '#00e676', B: '#40c4ff', C: '#ffd740', D: '#ff9100', F: '#ff1744',
+  A: '#6B8453', B: '#6F8791', C: '#B98F2A', D: '#A96F3C', F: '#A04535',
 };
 const RISK_COLORS: Record<string, string> = {
-  low: '#00e676', medium: '#ffd740', high: '#ff9100', critical: '#ff1744',
+  low: '#6B8453', medium: '#B98F2A', high: '#A96F3C', critical: '#A04535',
 };
 
 type DiscoveryMethod = NonNullable<AnalysisResult['policy_discovery_method']>;
@@ -146,16 +146,16 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
   ];
 
   const getBarColor = (score: number) => {
-    if (score >= 75) return '#00e676';
-    if (score >= 50) return '#ffd740';
-    if (score >= 30) return '#ff9100';
-    return '#ff1744';
+    if (score >= 75) return '#6B8453';
+    if (score >= 50) return '#B98F2A';
+    if (score >= 30) return '#A96F3C';
+    return '#A04535';
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-4">
+    <div className="grid grid-cols-1 gap-4 pt-1 lg:grid-cols-3">
       {/* Main score card */}
-      <div className="lg:col-span-1 bg-panel border border-border rounded-xl overflow-hidden">
+      <div className="glass-panel overflow-hidden rounded-[22px] lg:col-span-1">
         <div className="p-6 flex flex-col items-center">
           {/* Domain */}
           <div className="flex items-center gap-2 mb-4">
@@ -189,13 +189,13 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
                 <RadialBar
                   dataKey="value"
                   cornerRadius={8}
-                  background={{ fill: 'rgba(255,255,255,0.04)' }}
+            background={{ fill: 'rgba(14,14,13,0.06)' }}
                 />
               </RadialBarChart>
             </ResponsiveContainer>
             {/* Center text */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="text-5xl font-mono font-bold number-pop" style={{ color: gradeColor }}>
+              <div className="text-5xl font-mono font-semibold number-pop" style={{ color: gradeColor }}>
                 <CountUp target={result.overall_score} />
               </div>
               <div className="text-xs font-mono text-white/40 mt-0.5">/100</div>
@@ -204,8 +204,8 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
 
           {/* Grade badge */}
           <div
-            className="mt-3 text-6xl font-display font-bold number-pop"
-            style={{ color: gradeColor, textShadow: `0 0 30px ${gradeColor}40` }}
+            className="mt-3 text-7xl font-display font-light italic number-pop"
+            style={{ color: gradeColor }}
           >
             {result.grade}
           </div>
@@ -223,7 +223,7 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
           </div>
 
           {/* Summary */}
-          <p className="mt-4 text-xs font-sans text-white/40 text-center leading-relaxed">
+          <p className="mt-4 text-sm font-sans text-white/55 text-center leading-relaxed">
             {result.summary}
           </p>
 
@@ -278,7 +278,7 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
           {onReanalyze && (
             <button
               onClick={onReanalyze}
-              className="mt-4 w-full py-2 rounded border border-border text-white/40 hover:border-white/30 hover:text-white/60 text-xs font-mono transition-colors"
+              className="mt-4 w-full rounded-full border border-border bg-white/50 py-2 text-xs font-mono text-white/50 transition-colors hover:border-white/30 hover:text-white/70"
             >
               ↺ Force Re-analyze
             </button>
@@ -289,7 +289,7 @@ export default function ScoreHeader({ result, onReanalyze }: Props) {
       </div>
 
       {/* Dimension breakdown */}
-      <div className="lg:col-span-2 bg-panel border border-border rounded-xl p-6">
+      <div className="glass-panel rounded-[22px] p-6 lg:col-span-2">
         <h3 className="font-mono text-xs text-white/40 uppercase tracking-wider mb-5">Score Breakdown</h3>
 
         <div className="space-y-3">

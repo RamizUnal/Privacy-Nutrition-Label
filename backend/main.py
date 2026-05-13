@@ -32,6 +32,10 @@ from database.crud import (
 from crawler import crawl_website, debug_policy_discovery, extract_domain
 from analyzer.policy_analyzer import analyze_policy
 from tracker.detector import detect_trackers_from_html
+from tracker.runtime_detector import (
+    detect_runtime_privacy_signals,
+    runtime_to_tracker_detection_result,
+)
 from scoring.privacy_scorer import calculate_score
 from ai.policy_ai import analyze_policy_ai, stream_chat_response
 from ai.policy_extraction import (
@@ -122,6 +126,11 @@ def _dc(obj) -> Any:
 
 
 def _cached_result_matches_enabled_features(result_json: dict) -> bool:
+    # Older cached results were based on static HTML sniffing only. Treat them
+    # as stale so tracker/cookie panels get browser-observed runtime evidence.
+    if result_json.get("tracker_detection_source") == "static_html":
+        return False
+
     if ai_policy_extraction_enabled():
         meta = result_json.get("ai_extraction") or {}
         if meta.get("version") != AI_POLICY_EXTRACTION_VERSION:
@@ -188,15 +197,32 @@ async def analyze_website(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Crawl failed: {str(e)}")
 
-    # ── Tracker detection from homepage HTML ──────────────────────────────────
+    # ── Tracker/cookie detection ──────────────────────────────────────────────
+    runtime_detection = None
+    tracker_detection_source = "none"
     tracker_result = None
-    if crawl.homepage_html:
+
+    if os.getenv("DISABLE_RUNTIME_TRACKER_DETECTION", "").lower() not in {"1", "true", "yes"}:
+        try:
+            runtime_detection = await asyncio.wait_for(
+                detect_runtime_privacy_signals(req.url),
+                timeout=32.0,
+            )
+            tracker_result = runtime_to_tracker_detection_result(runtime_detection)
+            tracker_detection_source = "runtime_browser"
+        except asyncio.TimeoutError:
+            print(f"Runtime tracker detection timed out for {domain}")
+        except Exception:
+            print(f"Runtime tracker detection failed for {domain}")
+
+    if tracker_result is None and crawl.homepage_html:
         try:
             tracker_result = detect_trackers_from_html(
                 crawl.homepage_html,
                 domain,
                 crawl.homepage_cookies,
             )
+            tracker_detection_source = "static_html_fallback"
         except Exception:
             pass
 
@@ -239,6 +265,8 @@ async def analyze_website(
             score=score_breakdown,
             dynamic_result=dynamic_result,
             mismatch_result=None,
+            runtime_detection=runtime_detection,
+            tracker_detection_source=tracker_detection_source,
         )
 
     elif len(policy_text) < 100:
@@ -265,6 +293,8 @@ async def analyze_website(
             score=score_breakdown,
             dynamic_result=dynamic_result,
             mismatch_result=None,
+            runtime_detection=runtime_detection,
+            tracker_detection_source=tracker_detection_source,
         )
 
     else:
@@ -339,6 +369,8 @@ async def analyze_website(
             score=score_breakdown,
             dynamic_result=dynamic_result,
             mismatch_result=mismatch_dict,
+            runtime_detection=runtime_detection,
+            tracker_detection_source=tracker_detection_source,
         )
 
     # ── Persist ────────────────────────────────────────────────────────────────
@@ -569,8 +601,20 @@ async def ai_chat(req: ChatRequest, db: AsyncSession = Depends(get_db)):
 # Result builder
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_result(url, domain, crawl, analysis, tracker_result, score, dynamic_result=None, mismatch_result=None) -> dict:
+def _build_result(
+    url,
+    domain,
+    crawl,
+    analysis,
+    tracker_result,
+    score,
+    dynamic_result=None,
+    mismatch_result=None,
+    runtime_detection=None,
+    tracker_detection_source="none",
+) -> dict:
     tr = _dc(tracker_result) if tracker_result else {}
+    runtime_dict = runtime_detection.to_dict() if runtime_detection else None
     runtime_observations = _build_runtime_observations(dynamic_result)
     return {
         "url": url,
@@ -606,8 +650,9 @@ def _build_result(url, domain, crawl, analysis, tracker_result, score, dynamic_r
         "third_parties": analysis.get("third_parties", {}),
         "ai_extraction": analysis.get("ai_extraction"),
         "trackers": tr,
-        "tracker_detection_source": "static_html",
-        "static_detection": tr,
+        "tracker_detection_source": tracker_detection_source,
+        "static_detection": tr if tracker_detection_source == "static_html_fallback" else None,
+        "runtime_detection": runtime_dict,
         "dynamic_crawling": dynamic_result,
         "runtime_observations": runtime_observations,
         "mismatch_analysis": mismatch_result,

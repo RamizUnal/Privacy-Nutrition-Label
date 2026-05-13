@@ -23,13 +23,13 @@ export default function LoadingScreen({ url }: { url: string }) {
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] gap-8">
+    <div className="flex min-h-[650px] flex-col items-center justify-center gap-8 px-4 text-center">
       {/* Animated shield */}
       <div className="relative w-24 h-24">
         <div className="absolute inset-0 rounded-full border border-accent-green/20 animate-ping" />
         <div className="absolute inset-2 rounded-full border border-accent-green/30 animate-ping [animation-delay:300ms]" />
         <div className="absolute inset-4 rounded-full border border-accent-green/40 animate-ping [animation-delay:600ms]" />
-        <div className="w-24 h-24 rounded-full border border-accent-green/60 flex items-center justify-center bg-panel">
+        <div className="glass-panel flex h-24 w-24 items-center justify-center rounded-full">
           <svg className="w-10 h-10 text-accent-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -38,8 +38,8 @@ export default function LoadingScreen({ url }: { url: string }) {
       </div>
 
       {/* URL display */}
-      <div className="font-mono text-sm text-white/40 border border-border rounded px-4 py-2 bg-panel max-w-md truncate">
-        🔍 {url}
+      <div className="glass-panel max-w-md truncate rounded-full px-5 py-2 font-mono text-sm text-white/55">
+        target / <b className="font-medium text-white">{url}</b>
       </div>
 
       {/* Steps — these are an estimated timeline of phases the analyzer
@@ -49,7 +49,7 @@ export default function LoadingScreen({ url }: { url: string }) {
           steps get a neutral dim dot, the current step pulses, future steps
           stay as outlined circles. The real ✓ / ✗ findings appear once the
           analysis completes and the result page renders. */}
-      <div className="space-y-2 min-w-[320px]">
+      <div className="glass-panel w-full max-w-md space-y-2 rounded-2xl p-5 text-left">
         {STEPS.map((s, i) => (
           <div
             key={i}
@@ -83,7 +83,7 @@ export default function LoadingScreen({ url }: { url: string }) {
         ))}
       </div>
 
-      <p className="text-[10px] font-mono text-white/25 text-center max-w-xs leading-relaxed">
+      <p className="max-w-xs text-center font-mono text-[10px] leading-relaxed text-white/35">
         These are typical phases — final findings (✓ / ✗) appear once analysis completes.
       </p>
     </div>

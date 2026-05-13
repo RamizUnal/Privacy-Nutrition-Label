@@ -8,14 +8,14 @@ interface Props {
 }
 
 const GRADE_COLORS: Record<string, string> = {
-  A: '#00e676', B: '#40c4ff', C: '#ffd740', D: '#ff9100', F: '#ff1744',
+  A: '#6B8453', B: '#6F8791', C: '#B98F2A', D: '#A96F3C', F: '#A04535',
 };
 
 const SENSITIVITY_LABELS: Record<string, { color: string; short: string }> = {
-  critical: { color: '#ff2d2d', short: 'CRITICAL' },
-  high: { color: '#ff6b00', short: 'HIGH' },
-  medium: { color: '#f59e0b', short: 'MED' },
-  low: { color: '#22c55e', short: 'LOW' },
+  critical: { color: '#A04535', short: 'CRITICAL' },
+  high: { color: '#A96F3C', short: 'HIGH' },
+  medium: { color: '#B98F2A', short: 'MED' },
+  low: { color: '#6B8453', short: 'LOW' },
 };
 
 export default function NutritionFacts({ result, onTabChange }: Props) {
@@ -39,7 +39,7 @@ export default function NutritionFacts({ result, onTabChange }: Props) {
     highlight?: boolean; danger?: boolean; tab?: string;
   }) => (
     <div
-      className={`flex items-center justify-between py-2.5 border-b border-white/8 fda-thin-separator ${tab ? 'cursor-pointer hover:bg-white/[0.02]' : ''}`}
+      className={`flex items-center justify-between py-2.5 border-b border-white/8 fda-thin-separator ${tab ? 'cursor-pointer hover:bg-black/[0.025]' : ''}`}
       onClick={() => tab && onTabChange(tab)}
     >
       <div>
@@ -49,7 +49,7 @@ export default function NutritionFacts({ result, onTabChange }: Props) {
       <span
         className="font-mono text-sm font-bold"
         style={{
-          color: danger ? '#ff3b3b' : highlight ? '#00ff88' : 'rgba(255,255,255,0.85)',
+          color: danger ? '#A04535' : highlight ? '#6B8453' : 'rgba(14,14,13,0.82)',
         }}
       >
         {value}
@@ -67,12 +67,12 @@ export default function NutritionFacts({ result, onTabChange }: Props) {
   );
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {/* The FDA-style Nutrition Label */}
-      <div className="fda-label rounded-xl overflow-hidden">
+      <div className="fda-label overflow-hidden rounded-[22px] shadow-[var(--shadow-sm)]">
         {/* Header */}
         <div className="bg-white px-5 pt-4 pb-3 border-b-[10px] border-black">
-          <h2 className="text-black font-display text-3xl font-extrabold leading-none">Privacy Facts</h2>
+          <h2 className="text-black font-display text-4xl font-light leading-none tracking-[-0.012em]">Privacy Facts</h2>
           <div className="flex items-baseline gap-3 mt-1">
             <span className="text-black font-mono text-sm">Overall Grade</span>
             <span
@@ -156,16 +156,16 @@ export default function NutritionFacts({ result, onTabChange }: Props) {
       {/* Quick stats grid */}
       <div className="space-y-4">
         {/* Sensitivity breakdown */}
-        <div className="bg-panel border border-border rounded-xl p-5">
+        <div className="glass-panel rounded-[22px] p-5">
           <h3 className="font-mono text-xs text-white/40 uppercase tracking-wider mb-4">Data Sensitivity Distribution</h3>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {(['critical', 'high', 'medium', 'low'] as const).map(level => {
               const count = dt.filter(d => d.sensitivity === level).length;
               const info = SENSITIVITY_LABELS[level];
               return (
                 <div
                   key={level}
-                  className="text-center p-3 rounded border"
+                  className="rounded-xl border p-3 text-center"
                   style={{ borderColor: `${info.color}40`, background: `${info.color}08` }}
                 >
                   <div className="text-2xl font-mono font-bold" style={{ color: info.color }}>{count}</div>
@@ -191,7 +191,7 @@ export default function NutritionFacts({ result, onTabChange }: Props) {
 
         {/* Tracker categories */}
         {trackers?.by_category && Object.keys(trackers.by_category).length > 0 && (
-          <div className="bg-panel border border-border rounded-xl p-5">
+          <div className="glass-panel rounded-[22px] p-5">
             <h3 className="font-mono text-xs text-white/40 uppercase tracking-wider mb-3">Tracker Categories</h3>
             <div className="space-y-2">
               {Object.entries(trackers.by_category)
@@ -215,7 +215,7 @@ export default function NutritionFacts({ result, onTabChange }: Props) {
 
         {/* Alert banners */}
         {dp?.high_severity_count > 0 && (
-          <div className="border border-red-800/50 bg-red-900/15 rounded-xl p-4 flex items-start gap-3">
+          <div className="rounded-[22px] border border-red-500/20 bg-white/60 p-4 flex items-start gap-3">
             <span className="text-red-400 text-lg flex-shrink-0">⚠</span>
             <div>
               <p className="font-mono text-sm text-red-400 font-semibold">Dark Patterns Detected</p>
@@ -228,7 +228,7 @@ export default function NutritionFacts({ result, onTabChange }: Props) {
         )}
 
         {trackers?.fingerprinting_detected && (
-          <div className="border border-orange-800/50 bg-orange-900/15 rounded-xl p-4 flex items-start gap-3">
+          <div className="rounded-[22px] border border-orange-500/20 bg-white/60 p-4 flex items-start gap-3">
             <span className="text-orange-400 text-lg flex-shrink-0">🔮</span>
             <div>
               <p className="font-mono text-sm text-orange-400 font-semibold">Fingerprinting Detected</p>
@@ -241,7 +241,7 @@ export default function NutritionFacts({ result, onTabChange }: Props) {
         )}
 
         {tp?.data_sold && (
-          <div className="border border-red-800/50 bg-red-900/15 rounded-xl p-4 flex items-start gap-3">
+          <div className="rounded-[22px] border border-red-500/20 bg-white/60 p-4 flex items-start gap-3">
             <span className="text-red-400 text-lg flex-shrink-0">💰</span>
             <div>
               <p className="font-mono text-sm text-red-400 font-semibold">Data is Sold</p>
@@ -254,7 +254,7 @@ export default function NutritionFacts({ result, onTabChange }: Props) {
         )}
 
         {!result.policy_found && (
-          <div className="border border-red-800/50 bg-red-900/15 rounded-xl p-4 flex items-start gap-3">
+          <div className="rounded-[22px] border border-red-500/20 bg-white/60 p-4 flex items-start gap-3">
             <span className="text-red-400 text-lg flex-shrink-0">✗</span>
             <div>
               <p className="font-mono text-sm text-red-400 font-semibold">No Privacy Policy Found</p>

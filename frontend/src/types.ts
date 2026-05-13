@@ -137,7 +137,7 @@ export interface DetectedTracker {
   name: string;
   category: string;
   risk: 'low' | 'medium' | 'high' | 'critical';
-  source_type: 'script' | 'pixel' | 'iframe' | 'inline';
+  source_type: 'script' | 'pixel' | 'iframe' | 'inline' | 'document' | 'xhr' | 'fetch' | 'image' | 'network' | 'other' | string;
   url: string;
   fingerprinting: boolean;
   session_recording: boolean;
@@ -252,6 +252,28 @@ export interface RuntimeObservations {
   derived?: Record<string, any> | null;
 }
 
+export interface RuntimeDetection {
+  url: string;
+  final_url: string;
+  first_party_etld1: string | null;
+  total_requests: number;
+  third_party_request_count: number;
+  tracker_events: Array<Record<string, any>>;
+  cookie_events: Array<Record<string, any>>;
+  vendors: Array<Record<string, any>>;
+  total_tracker_count: number;
+  total_cookie_count: number;
+  third_party_cookie_count: number;
+  by_category: Record<string, number>;
+  cmp_detected: string | null;
+  fingerprinting_detected: boolean;
+  fingerprinting_evidence: string[];
+  session_recording_detected: boolean;
+  session_recording_evidence: string[];
+  privacy_sandbox_detected: boolean;
+  warnings: string[];
+}
+
 export interface ScoreBreakdown {
   data_collection: number;
   sharing: number;
@@ -357,6 +379,8 @@ export interface AnalysisResult {
   rights: RightsAnalysis;
   third_parties: ThirdPartyAnalysis;
   trackers: TrackerResult;
+  tracker_detection_source?: 'runtime_browser' | 'static_html_fallback' | 'none' | string;
+  runtime_detection?: RuntimeDetection | null;
   dynamic_crawling?: DynamicCrawlingResult;
   runtime_observations?: RuntimeObservations;
   mismatch_analysis?: MismatchAnalysis;

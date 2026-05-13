@@ -34,88 +34,118 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-bg grid-bg">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-bg/90 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <button onClick={handleReset} className="flex items-center gap-3 group">
-            <div className="w-8 h-8 rounded border border-accent-green/40 flex items-center justify-center group-hover:border-accent-green/80 transition-colors">
-              <svg className="w-4 h-4 text-accent-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-            </div>
-            <span className="font-mono text-sm font-semibold text-white/80 group-hover:text-accent-green transition-colors tracking-wider">
-              PRIVACY LABEL
-            </span>
+      <div className="app-page">
+        {/* Top strip */}
+        <header className="flex items-center justify-between px-3 pb-4 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-white/80">
+          <button onClick={handleReset} className="flex items-center gap-2 transition-opacity hover:opacity-70">
+            <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M3 2h10v13l-5-3-5 3V2z" />
+            </svg>
+            <span>Case — Privacy Engineering</span>
           </button>
 
-          <div className="flex items-center gap-3 text-xs font-mono text-white/30">
-            <span className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
-            <span>GDPR · CCPA · LGPD</span>
+          <div className="hidden items-center gap-2 sm:flex">
+            <span>v1.2 · 2026</span>
+            <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 14s-6-3.7-6-8a3.5 3.5 0 0 1 6-2.5A3.5 3.5 0 0 1 14 6c0 4.3-6 8-6 8z" />
+            </svg>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main content */}
-      <main className="max-w-7xl mx-auto px-4 pb-16">
+        {/* Main content */}
+        <main>
         {loading ? (
-          <LoadingScreen url={currentUrl} />
+          <section className="app-card hero-sky min-h-[760px] px-5 py-5 sm:px-7">
+            <AppNav onReset={handleReset} />
+            <LoadingScreen url={currentUrl} />
+          </section>
         ) : result ? (
           <div className="animate-fade-in">
-            <div className="py-6">
-              <SearchBar
-                onAnalyze={handleAnalyze}
-                compact
-                initialUrl={currentUrl}
-                onRefresh={() => handleAnalyze(currentUrl, true)}
-              />
+            <section className="app-card hero-sky mb-4 min-h-[360px] px-5 py-5 sm:px-7">
+              <AppNav onReset={handleReset} />
+              <div className="mx-auto flex max-w-5xl flex-col items-center px-2 py-12 text-center">
+                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/80 shadow-sm">
+                  <img
+                    src={`https://www.google.com/s2/favicons?domain=${result.domain}&sz=64`}
+                    alt=""
+                    className="h-6 w-6"
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                </div>
+                <h1 className="font-display text-[clamp(44px,7vw,92px)] font-light leading-[0.98] tracking-[-0.012em] text-white">
+                  {result.domain}
+                </h1>
+                <p className="mt-4 max-w-xl text-sm leading-6 text-white/60">
+                  A privacy report scored across policy promises, consent behaviour,
+                  trackers, cookies, retention, rights, and technical hygiene.
+                </p>
+                <div className="mt-8 w-full max-w-3xl">
+                  <SearchBar
+                    onAnalyze={handleAnalyze}
+                    compact
+                    initialUrl={currentUrl}
+                    onRefresh={() => handleAnalyze(currentUrl, true)}
+                  />
+                </div>
+              </div>
+            </section>
+            <div className="rounded-[28px] bg-white/70 p-3 shadow-[var(--shadow-md)] backdrop-blur-xl">
+              <PrivacyLabel result={result} onReanalyze={() => handleAnalyze(currentUrl, true)} />
             </div>
-            <PrivacyLabel result={result} onReanalyze={() => handleAnalyze(currentUrl, true)} />
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center min-h-[80vh] gap-12">
-            {/* Hero */}
-            <div className="text-center max-w-2xl">
-              <div className="mb-6 inline-flex items-center gap-2 px-3 py-1 rounded-full border border-accent-green/30 bg-accent-green/5 text-accent-green text-xs font-mono">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-green" />
-                Data Privacy Analysis Engine v1.0
-              </div>
-              <h1 className="font-display text-5xl md:text-6xl font-bold text-white mb-4 leading-tight">
-                Privacy
-                <span className="text-gradient-green"> Lens</span>
-              </h1>
-              <p className="text-white/50 text-lg font-sans leading-relaxed">
-                Enter any website URL to generate a comprehensive privacy analysis. We scan privacy policies, detect trackers, identify dark patterns, and score compliance with GDPR & CCPA.
-              </p>
-            </div>
-
-            <SearchBar onAnalyze={handleAnalyze} />
-
-            {error && (
-              <div className="px-4 py-3 rounded border border-red-800/50 bg-red-900/20 text-red-400 text-sm font-mono max-w-lg text-center">
-                {error}
-              </div>
-            )}
-
-            {/* Feature pills */}
-            <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
-              {[
-                '🔍 Privacy Policy Crawler',
-                '🕵️ Tracker Detection',
-                '🍪 Cookie Analysis',
-                '⚖️ GDPR/CCPA Rights Check',
-                '🎭 Dark Pattern Detection',
-                '📊 Sentiment Analysis',
-                '🔄 Historical Tracking',
-                '💯 Privacy Score',
-              ].map(f => (
-                <span key={f} className="px-3 py-1 rounded-full border border-border bg-panel text-white/40 text-xs font-mono">
-                  {f}
+          <section className="app-card hero-sky overflow-visible px-5 pb-0 pt-5 sm:px-7">
+            <AppNav onReset={handleReset} />
+            <div className="mx-auto flex min-h-[660px] max-w-6xl flex-col items-center justify-center px-2 pb-12 pt-16 text-center">
+              <div className="mb-9 inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/80 py-1 pl-3 pr-1.5 text-[11.5px] font-medium text-white/70 shadow-[var(--shadow-sm)] backdrop-blur-xl">
+                Read with
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#0E0E0D] px-2.5 py-1 text-[11px] text-[#FBFAF7]">
+                  <svg className="h-3 w-3" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 1l2 5 5 .5-3.5 3.5L13 15l-5-3-5 3 1.5-5L1 6.5 6 6z" />
+                  </svg>
+                  GDPR · CCPA
                 </span>
-              ))}
-            </div>
+              </div>
 
-            <RecentDomains onSelect={handleAnalyze} />
-          </div>
+              <h1 className="max-w-[14ch] font-display text-[clamp(52px,9vw,116px)] font-light leading-[0.96] tracking-[-0.012em] text-white">
+                Read every word,<br />
+                so <em className="font-light italic">you don't</em><br />
+                have to.
+              </h1>
+
+              <p className="mt-8 max-w-2xl text-[15px] leading-7 text-white/60">
+                Generate an evidence-backed privacy nutrition label for any website:
+                policy text, live trackers, cookies, consent behaviour, user rights,
+                dark patterns, and a weighted verdict.
+              </p>
+
+              <div className="mt-9 w-full">
+                <SearchBar onAnalyze={handleAnalyze} />
+              </div>
+
+              {error && (
+                <div className="mt-5 max-w-lg rounded-xl border border-red-500/20 bg-white/60 px-4 py-3 text-center font-mono text-sm text-red-400">
+                  {error}
+                </div>
+              )}
+
+              <div className="mt-10 grid w-full max-w-4xl grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  ['80+', 'trackers'],
+                  ['20+', 'data categories'],
+                  ['9', 'dark patterns'],
+                  ['15', 'privacy rights'],
+                ].map(([big, label]) => (
+                  <div key={label} className="glass-panel rounded-2xl px-4 py-3 text-left">
+                    <div className="font-display text-4xl font-light leading-none text-white">{big}</div>
+                    <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-white/40">{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <RecentDomains onSelect={handleAnalyze} />
+            </div>
+          </section>
         )}
 
         {!loading && !result && error && (
@@ -123,7 +153,93 @@ export default function App() {
             <p className="text-red-400 text-sm font-mono">{error}</p>
           </div>
         )}
-      </main>
+        </main>
+      </div>
     </div>
+  );
+}
+
+function AppNav({ onReset }: { onReset: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <button onClick={onReset} className="flex items-center gap-2 font-sans text-sm font-medium text-white transition-opacity hover:opacity-70">
+        <span className="grid h-[22px] w-[22px] place-items-center rounded-md bg-[#0E0E0D] text-[#FBFAF7]">
+          <svg className="h-3 w-3" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M2 2h6v6H2zM10 2h4v4h-4zM10 8h4v6h-4zM2 10h6v4H2z" />
+          </svg>
+        </span>
+        Privacy Label
+      </button>
+
+      <nav className="glass-panel hidden rounded-full p-1 sm:flex">
+        {[
+          ['Overview', 'grid'],
+          ['Trackers', 'target'],
+          ['Cookies', 'cookie'],
+          ['History', 'history'],
+        ].map(([label, icon], index) => (
+          <button
+            key={label}
+            type="button"
+            aria-label={label}
+            title={label}
+            className={`grid h-9 w-9 place-items-center rounded-full transition-colors ${
+              index === 0 ? 'bg-[#0E0E0D] text-[#FBFAF7]' : 'text-white/70 hover:bg-black/5'
+            }`}
+          >
+            <NavIcon icon={icon} />
+          </button>
+        ))}
+      </nav>
+
+      <button
+        type="button"
+        onClick={onReset}
+        className="rounded-full border border-white/80 bg-white/80 px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-sm)] transition-transform hover:-translate-y-0.5"
+      >
+        New scan
+      </button>
+    </div>
+  );
+}
+
+function NavIcon({ icon }: { icon: string }) {
+  if (icon === 'grid') {
+    return (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+        <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+        <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+        <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+      </svg>
+    );
+  }
+
+  if (icon === 'target') {
+    return (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <circle cx="12" cy="12" r="5" />
+        <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  if (icon === 'cookie') {
+    return (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <path d="M12 3a9 9 0 1 0 9 9c-3 0-5-2-5-4 0-3-2-5-4-5z" />
+        <circle cx="9" cy="10" r=".9" fill="currentColor" stroke="none" />
+        <circle cx="14" cy="14" r=".9" fill="currentColor" stroke="none" />
+        <circle cx="10" cy="16" r=".9" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2.5" />
+    </svg>
   );
 }

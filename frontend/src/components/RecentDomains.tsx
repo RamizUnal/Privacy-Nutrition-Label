@@ -22,14 +22,14 @@ export default function RecentDomains({ onSelect }: Props) {
   if (!domains.length) return null;
 
   return (
-    <div className="max-w-2xl w-full">
-      <p className="text-white/25 text-xs font-mono mb-3 text-center">Recently Analyzed</p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+    <div className="mt-10 w-full max-w-4xl">
+      <p className="mb-3 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-white/35">Recently analyzed</p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {domains.map(d => (
           <button
             key={d.domain}
             onClick={() => onSelect(d.domain)}
-            className="p-3 rounded border border-border bg-panel hover:border-accent-green/40 hover:bg-panel/80 transition-all text-left group"
+            className="glass-panel group rounded-2xl p-3 text-left transition-all hover:-translate-y-0.5 hover:border-accent-green/40"
           >
             <div className="flex items-center justify-between mb-1">
               <span className="font-mono text-xs text-white/60 truncate group-hover:text-white/90 transition-colors">
@@ -39,12 +39,12 @@ export default function RecentDomains({ onSelect }: Props) {
                 {d.grade}
               </span>
             </div>
-            <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+            <div className="h-1 overflow-hidden rounded-full bg-white/30">
               <div
                 className="h-full rounded-full"
                 style={{
                   width: `${d.score}%`,
-                  background: d.score >= 70 ? '#00e676' : d.score >= 50 ? '#ffd740' : '#ff3b3b',
+                  background: d.score >= 70 ? '#6B8453' : d.score >= 50 ? '#B98F2A' : '#A04535',
                 }}
               />
             </div>
